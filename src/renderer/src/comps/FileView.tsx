@@ -15,19 +15,21 @@ export default function FileView(): JSX.Element {
     setDragOverScreen(false)
   }
 
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
     setDragOverScreen(false)
     console.log('drop detected')
     // You can access the dropped files here
     const pathsToDetail = Array.from(e.dataTransfer.files).map((file) => file.path)
-    window.electron.ipcRenderer.invoke('GET_DETAILS', pathsToDetail)
+    const res = await window.electron.ipcRenderer.invoke('GET_DETAILS', pathsToDetail)
+    console.log('res is ', res)
   }
 
   // Import files with a file explorer window
   const importDirs = async (type: 'folder' | 'file') => {
     console.log(`Importing ${type}`)
-    await window.electron.ipcRenderer.invoke('SELECT_DIRS', { type })
+    const res = await window.electron.ipcRenderer.invoke('SELECT_DIRS', { type })
+    console.log('res is ', res)
   }
 
   return (

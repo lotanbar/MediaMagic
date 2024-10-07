@@ -12,7 +12,7 @@
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "start": "electron-vite preview",
-    "dev": "electron-vite dev",
+    "dev": "electron-vite dev --watch",
     "build": "npm run typecheck && electron-vite build",
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",
@@ -25,8 +25,13 @@
     "@electron-toolkit/utils": "^3.0.0",
     "antd": "^5.21.2",
     "autoprefixer": "^10.4.20",
+    "bytes": "^3.1.2",
     "electron-updater": "^6.1.7",
+    "get-folder-size": "^5.0.0",
+    "get-video-duration": "^4.1.0",
+    "go-get-folder-size": "^0.5.5",
     "postcss": "^8.4.47",
+    "remove": "^0.1.5",
     "tailwindcss": "^3.4.13"
   },
   "devDependencies": {
