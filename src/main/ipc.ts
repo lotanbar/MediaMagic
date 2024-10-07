@@ -4,14 +4,18 @@ import { isValidExt, getDuration } from './utils'
 import { parse, join } from 'path'
 import bytes from 'bytes'
 import { getFolderSize } from 'go-get-folder-size'
+import { DirItem } from '../types'
 
-export default function ipc() {
+export default function ipc(): void {
   ipcMain.handle('SELECT_DIRS', handleSelectDirs)
   ipcMain.handle('GET_DETAILS', handleGetDetails)
 }
 
 // Accept event and object if the func was called via dnd in front, or pathsToDetail if it was called via handleSelectDir
-const handleGetDetails = async (e: IpcMainInvokeEvent | null, pathsToDetail: string[]) => {
+const handleGetDetails = async (
+  e: IpcMainInvokeEvent | null,
+  pathsToDetail: string[]
+): Promise<DirItem[]> => {
   const res = await Promise.allSettled(
     // 1. Check paths type - file/folder
     pathsToDetail.map(async (path: string) => {
@@ -26,12 +30,9 @@ const handleGetDetails = async (e: IpcMainInvokeEvent | null, pathsToDetail: str
             })
           )
 
-          // // Get folder size
-          // const size = await getFolderSize(path)
-          // const real = bytes(await getFolderSize(path))
-
-          const detailedFolder = {
-            name: parse(path).name,
+          const detailedFolder: DirItem = {
+            isExpanded: false, // This one is for future rendering
+            name: parse(path).base,
             type: 'folder',
             size: bytes(await getFolderSize(path)),
             children: children.flat()
@@ -41,10 +42,13 @@ const handleGetDetails = async (e: IpcMainInvokeEvent | null, pathsToDetail: str
         } else if (stats.isFile()) {
           // 2. Check if the file exension is media
           const pathExt = isValidExt(path)
-          if (['video', 'audio', 'image'].includes(pathExt!)) {            
+          if (['video', 'audio', 'image'].includes(pathExt!)) {
             // 3. Construct a detailed file obj
-            const detailedFile = {
-              name: parse(path).name,
+            const name = parse(path)
+            console.log('name is', name)
+
+            const detailedFile: DirItem = {
+              name: parse(path).base,
               type: 'file',
               size: bytes(stats.size),
               duration: ['video', 'audio'].includes(pathExt!) ? await getDuration(path) : 'none'
@@ -62,19 +66,19 @@ const handleGetDetails = async (e: IpcMainInvokeEvent | null, pathsToDetail: str
   const unwrapFulfilled = (item: any): any => {
     if (item && typeof item === 'object') {
       if (item.status === 'fulfilled' && 'value' in item) {
-        return unwrapFulfilled(item.value);
+        return unwrapFulfilled(item.value)
       }
       if (Array.isArray(item)) {
-        return item.map(unwrapFulfilled);
+        return item.map(unwrapFulfilled)
       }
       return Object.fromEntries(
         Object.entries(item).map(([key, value]) => [key, unwrapFulfilled(value)])
-      );
+      )
     }
-    return item;
-  };
+    return item
+  }
 
-  const filteredRes = unwrapFulfilled(res);
+  const filteredRes = unwrapFulfilled(res)
 
   // A logging tecnique, doesn't manipulate the object
   const getCircularReplacer = () => {
@@ -94,10 +98,14 @@ const handleGetDetails = async (e: IpcMainInvokeEvent | null, pathsToDetail: str
   return filteredRes
 }
 
-async function handleSelectDirs(e: IpcMainInvokeEvent, { type }: { type: string }) {
+async function handleSelectDirs(
+  e: IpcMainInvokeEvent,
+  { type }: { type: string }
+): Promise<DirItem[]> {
   console.log('type is', type)
   const res = await dialog.showOpenDialog({
-    properties: type === 'file' ? ['openFile', 'multiSelections'] : ['openDirectory']
+    properties:
+      type === 'file' ? ['openFile', 'multiSelections'] : ['openDirectory', 'multiSelections']
   })
 
   if (res.canceled) {
