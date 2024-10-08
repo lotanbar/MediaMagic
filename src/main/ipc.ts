@@ -1,7 +1,7 @@
 import { ipcMain, IpcMainInvokeEvent, dialog } from 'electron'
 import { lstat, readdir } from 'fs/promises'
 import { isValidExt, getDuration, convertExplorer } from './utils'
-import { parse, join } from 'path'
+import path, { parse, join } from 'path'
 import bytes from 'bytes'
 import { getFolderSize } from 'go-get-folder-size'
 import { DirItem } from '../types'
@@ -33,6 +33,7 @@ const handleGetDetails = async (
           )
 
           const detailedFolder: DirItem = {
+            path,
             isExpanded: false, // This one is for future rendering
             name: parse(path).base,
             type: 'folder',
@@ -50,8 +51,10 @@ const handleGetDetails = async (
             console.log('name is', name)
 
             const detailedFile: DirItem = {
+              path,
               name: parse(path).base,
               type: 'file',
+              ext: pathExt,
               size: bytes(stats.size),
               duration: ['video', 'audio'].includes(pathExt!) ? await getDuration(path) : 'none'
             }
@@ -104,7 +107,8 @@ async function handleConvertExplorer(
   e: IpcMainInvokeEvent,
   { explorer, outputDir }: { explorer: DirItem[]; outputDir: string }
 ): Promise<void> {
-  await convertExplorer(explorer, outputDir)
+  const newOutputDir = path.join(outputDir, 'converted') // Create 'Converted' folder in output dir
+  await convertExplorer(explorer, newOutputDir)
 }
 
 async function handleSelectDirs(

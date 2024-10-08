@@ -15,7 +15,7 @@ export const ExplorerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       description: 'This folder does not contain any items.',
       icon: <InfoCircleOutlined style={{ color: '#1890ff' }} />,
       placement: 'topRight',
-      duration: 3
+      duration: 10
     })
   }
 
