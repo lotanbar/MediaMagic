@@ -1,3 +1,5 @@
+import React from 'react'
+
 export type DirItem = {
   isExpanded?: boolean
   name: string
@@ -5,4 +7,9 @@ export type DirItem = {
   size: string
   duration?: string
   children?: DirItem[]
+}
+
+export type ExplorerContextType = {
+  explorer: DirItem[]
+  setExplorer: React.Dispatch<React.SetStateAction<DirItem[]>>
 }

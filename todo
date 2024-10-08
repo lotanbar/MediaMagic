@@ -12,39 +12,7 @@ stage 1: dropping files and rendering them:
   render them all in a table - 
     - indentation and arrows to subfolders
     - view file name, type and duration
-    - sorting data asc/desc
     - remove button for folders n files
-
-[
- {
-  name: image.jpeg
-  type: file
-  duration: none
-}
-
-{
-  name: images folder
-  type: folder
-  duration: none
-  children: [{	
-    name: bitch.avif
-    type: file
-    duration: none
-  },
-  {
-    name: somethingvideo.mp4
-    type: file, 
-    duration: 00:50:33
-  }, 
-  {
-    name: images foler
-    type: folder
-    children: [etc]
-  }
-  ] 
-  }
-]
-
 
 stage 2: possible side actions after render
   expand/collapse a/all dir/s on click

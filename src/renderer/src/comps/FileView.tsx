@@ -1,23 +1,25 @@
 import { useState, Fragment } from 'react'
 import { Button, notification } from 'antd'
-import { InfoCircleOutlined } from '@ant-design/icons';
+import { InfoCircleOutlined } from '@ant-design/icons'
 import { DirItem } from '../../../types'
 import { FaTrash, FaChevronDown, FaChevronRight } from 'react-icons/fa'
+import { useExplorer } from '../ExplorerContext'
 
 export default function FileView(): JSX.Element {
   const [dragOverScreen, setDragOverScreen] = useState<boolean>(false)
-  const [explorer, setExplorer] = useState<DirItem[]>([])
+
+  const { explorer, setExplorer } = useExplorer()
 
   // Config 'no children' notification
-  const showEmptyFolderNotification = () => {
+  const showEmptyFolderNotification = (): void => {
     notification.info({
       message: 'Empty Folder',
       description: 'This folder does not contain any items.',
       icon: <InfoCircleOutlined style={{ color: '#1890ff' }} />,
       placement: 'topRight',
-      duration: 3,
-    });
-  };
+      duration: 3
+    })
+  }
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>): void => {
     e.preventDefault()
@@ -54,8 +56,8 @@ export default function FileView(): JSX.Element {
         return items.map((item, i) => {
           if (i === index && currentDepth === depth) {
             if (!item.children || item.children.length === 0) {
-              showEmptyFolderNotification();
-              return item; // Don't toggle if empty
+              showEmptyFolderNotification()
+              return item // Don't toggle if empty
             }
             const newIsExpanded = !item.isExpanded
             return {
