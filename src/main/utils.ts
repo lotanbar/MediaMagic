@@ -1,5 +1,6 @@
 import path from 'path'
 import { getVideoDurationInSeconds } from 'get-video-duration'
+import { DirItem } from '../types'
 
 export function isValidExt(filePath: string): string | null {
   const validExt: Record<string, string[]> = {
@@ -35,4 +36,8 @@ export async function getDuration(filePath: string): Promise<string> {
     console.error('err in getDuration in utils.ts')
     throw err
   }
+}
+
+export async function convertExplorer(explorer: DirItem[], outputDir: string) {
+  console.log('hello from convertExplorer in utils.ts')
 }

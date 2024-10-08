@@ -12,4 +12,6 @@ export type DirItem = {
 export type ExplorerContextType = {
   explorer: DirItem[]
   setExplorer: React.Dispatch<React.SetStateAction<DirItem[]>>
+  expandFolder: (index: number, depth: number) => void
+  deleteItem: (index: number, depth: number) => void
 }

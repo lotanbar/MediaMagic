@@ -1,6 +1,5 @@
 import { useState, Fragment } from 'react'
-import { Button, notification } from 'antd'
-import { InfoCircleOutlined } from '@ant-design/icons'
+import { Button } from 'antd'
 import { DirItem } from '../../../types'
 import { FaTrash, FaChevronDown, FaChevronRight } from 'react-icons/fa'
 import { useExplorer } from '../ExplorerContext'
@@ -8,18 +7,7 @@ import { useExplorer } from '../ExplorerContext'
 export default function FileView(): JSX.Element {
   const [dragOverScreen, setDragOverScreen] = useState<boolean>(false)
 
-  const { explorer, setExplorer } = useExplorer()
-
-  // Config 'no children' notification
-  const showEmptyFolderNotification = (): void => {
-    notification.info({
-      message: 'Empty Folder',
-      description: 'This folder does not contain any items.',
-      icon: <InfoCircleOutlined style={{ color: '#1890ff' }} />,
-      placement: 'topRight',
-      duration: 3
-    })
-  }
+  const { explorer, setExplorer, expandFolder, deleteItem } = useExplorer()
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>): void => {
     e.preventDefault()
@@ -48,75 +36,12 @@ export default function FileView(): JSX.Element {
     setExplorer(res)
   }
 
-  // Those function are quite complex. I won't lie, I mostly used Claude for those, which is why I made sure to place descriptive comments
-  const expandFolder = (index: number, depth: number): void => {
-    setExplorer((prevExplorer) => {
-      // Main function to update the explorer structure
-      const updateExplorer = (items: DirItem[], currentDepth: number): DirItem[] => {
-        return items.map((item, i) => {
-          if (i === index && currentDepth === depth) {
-            if (!item.children || item.children.length === 0) {
-              showEmptyFolderNotification()
-              return item // Don't toggle if empty
-            }
-            const newIsExpanded = !item.isExpanded
-            return {
-              ...item,
-              isExpanded: newIsExpanded,
-              // If expanding, keep children as is. If collapsing, collapse all subfolders
-              children: newIsExpanded ? item.children : collapseAll(item.children)
-            }
-          }
-          if (item.children) {
-            return { ...item, children: updateExplorer(item.children, currentDepth + 1) }
-          }
-          return item
-        })
-      }
-
-      // Helper function to recursively collapse all subfolders
-      const collapseAll = (items: DirItem[] | undefined): DirItem[] | undefined => {
-        return items?.map((item) => ({
-          ...item,
-          isExpanded: false,
-          children: collapseAll(item.children)
-        }))
-      }
-
-      // Start the update process from the top level
-      return updateExplorer(prevExplorer, 0)
-    })
-  }
-
-  const deleteItem = (index: number, depth: number): void => {
-    setExplorer((prevExplorer) => {
-      // Recursive function to update the explorer structure
-      const updateExplorer = (items: DirItem[], currentDepth: number): DirItem[] => {
-        return items.filter((item, i) => {
-          // If this is the item to delete, remove it by returning false
-          if (i === index && currentDepth === depth) {
-            return false
-          }
-          // If item has children, recursively update them
-          if (item.children) {
-            item.children = updateExplorer(item.children, currentDepth + 1)
-          }
-          // Keep all other items
-          return true
-        })
-      }
-
-      // Start the update process from the top level
-      return updateExplorer(prevExplorer, 0)
-    })
-  }
-
   const renderDirItems = (items: DirItem[], depth: number = 0): JSX.Element[] => {
     return items.map((dir: DirItem, index: number) => (
       <Fragment key={`${depth}-${index}`}>
         <tr className="border-b border-gray-700 hover:bg-gray-800">
           <td className="p-3 w-24 text-lg">
-            <div className="flex items-center justify-between">
+            <div style={{ paddingLeft: `${depth * 20}px` }} className="flex items-center">
               {dir.type === 'folder' && dir.children ? (
                 <Button
                   onClick={() => expandFolder(index, depth)}
@@ -129,7 +54,7 @@ export default function FileView(): JSX.Element {
               )}
               <Button
                 onClick={() => deleteItem(index, depth)}
-                className="bg-red-600 hover:bg-red-700 text-white p-2 rounded"
+                className="bg-red-600 hover:bg-red-700 text-white p-2 rounded ml-2"
               >
                 <FaTrash size={14} />
               </Button>
@@ -154,16 +79,16 @@ export default function FileView(): JSX.Element {
   }
 
   return (
-    <div className="bg-gray-900 text-gray-100 h-[92%] p-6">
+    <div className="bg-gray-900 text-gray-100 h-[93%] p-3 overflow-y-auto">
       {explorer.length === 0 ? (
         <div
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          className={`w-full h-full border-2 ${
+          className={`w-full h-full border-4 ${
             dragOverScreen
               ? 'border-dashed border-blue-400 bg-gray-800'
-              : 'border-solid border-gray-700'
+              : 'border-solid border-gray-500'
           } rounded-lg flex justify-center items-center transition-all duration-300`}
         >
           {dragOverScreen ? (
@@ -173,13 +98,13 @@ export default function FileView(): JSX.Element {
               <div className="flex justify-center space-x-4 mb-6">
                 <Button
                   onClick={() => importDirs('folder')}
-                  className="bg-blue-600 hover:bg-blue-700 transition-colors duration-700 text-white text-lg font-bold px-5 py-4 rounded"
+                  className="bg-blue-600 duration-500 text-white text-lg font-bold px-5 py-4 rounded"
                 >
                   Select Folders
                 </Button>
                 <Button
                   onClick={() => importDirs('file')}
-                  className="bg-green-600 hover:bg-green-700 transition-colors duration-700 text-white text-lg font-bold px-5 py-4 rounded"
+                  className="bg-blue-600 duration-500 text-white text-lg font-bold px-5 py-4 rounded"
                 >
                   Select Files
                 </Button>

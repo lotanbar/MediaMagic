@@ -1,6 +1,6 @@
 import { ipcMain, IpcMainInvokeEvent, dialog } from 'electron'
 import { lstat, readdir } from 'fs/promises'
-import { isValidExt, getDuration } from './utils'
+import { isValidExt, getDuration, convertExplorer } from './utils'
 import { parse, join } from 'path'
 import bytes from 'bytes'
 import { getFolderSize } from 'go-get-folder-size'
@@ -9,6 +9,8 @@ import { DirItem } from '../types'
 export default function ipc(): void {
   ipcMain.handle('SELECT_DIRS', handleSelectDirs)
   ipcMain.handle('GET_DETAILS', handleGetDetails)
+  ipcMain.handle('SELECT_OUTPUT_DIR', handleSelectOutputDir)
+  ipcMain.handle('CONVERT_EXPLORER', handleConvertExplorer)
 }
 
 // Accept event and object if the func was called via dnd in front, or pathsToDetail if it was called via handleSelectDir
@@ -98,6 +100,13 @@ const handleGetDetails = async (
   return filteredRes
 }
 
+async function handleConvertExplorer(
+  e: IpcMainInvokeEvent,
+  { explorer, outputDir }: { explorer: DirItem[]; outputDir: string }
+): Promise<void> {
+  await convertExplorer(explorer, outputDir)
+}
+
 async function handleSelectDirs(
   e: IpcMainInvokeEvent,
   { type }: { type: string }
@@ -116,5 +125,18 @@ async function handleSelectDirs(
     const explorer = await handleGetDetails(null, pathsToDetail)
 
     return explorer
+  }
+}
+
+async function handleSelectOutputDir(e: IpcMainInvokeEvent): Promise<string> {
+  console.log('select output dir')
+  const res = await dialog.showOpenDialog({
+    properties: ['openDirectory']
+  })
+  if (res.canceled) {
+    throw new Error('err in handleSelectDir in ipc.ts')
+  } else {
+    console.log('selected res is', res)
+    return res.filePaths[0]
   }
 }
