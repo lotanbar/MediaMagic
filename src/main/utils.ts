@@ -1,4 +1,5 @@
 import path from 'path'
+import { app } from 'electron'
 import { sendToRenderer } from './index'
 import { setInterval } from 'timers'
 import ffmpeg from 'fluent-ffmpeg'
@@ -7,14 +8,17 @@ import { getVideoDurationInSeconds } from 'get-video-duration'
 import { DirItem, ext } from '../types'
 
 export function isValidExt(filePath: string): ext {
-  const validExt: Record<string, string[]> = {
+  // Define validExt with explicit key typing
+  const validExt = {
     video: ['mp4', 'mkv', 'mov', 'avi', 'webm'],
     audio: ['mp3', 'wav', 'flac', 'ogg', 'opus'],
-    image: ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp']
-  }
+    image: ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'tif', 'tiff']
+  } as const // Make it readonly
+
   const ext = path.extname(filePath).toLowerCase().slice(1)
 
-  for (const [group, extensions] of Object.entries(validExt)) {
+  // Use type assertion for Object.entries to ensure correct types
+  for (const [group, extensions] of Object.entries(validExt) as [ext, readonly string[]][]) {
     if (extensions.includes(ext)) {
       return group
     }
@@ -37,7 +41,7 @@ export async function getDuration(filePath: string): Promise<string> {
 
     return duration
   } catch (err) {
-    console.error('err in getDuration in utils.ts')
+    console.error('err in getDuration in utils.ts', err)
     throw err
   }
 }
@@ -52,7 +56,7 @@ export async function convertExplorer(explorer: DirItem[], outputDir: string): P
       if (dir.type === 'folder') {
         const childOutputDir = path.join(outputDir, dir.name)
         await fs.mkdir(childOutputDir, { recursive: true }) // Create folder with child's name in output dir 'Converted'
-        await convertExplorer(dir.children, childOutputDir)
+        await convertExplorer(dir.children!, childOutputDir)
       } else {
         const fileOutputDir = path.join(outputDir, dir.name)
         // 3 Function to handle all extensions - input path (what to convert), and output path (where to convert), for each function
@@ -80,7 +84,7 @@ async function convertAudio(inputPath: string, outputPath: string): Promise<void
   return new Promise((resolve, reject) => {
     let latestProgress = 0
 
-    console.log('Starting audio conversion for:', inputPath);
+    console.log('Starting audio conversion for:', inputPath)
 
     const progressInterval = setInterval(() => {
       sendToRenderer('LIVE_PROGRESS', inputPath, latestProgress)
@@ -88,39 +92,41 @@ async function convertAudio(inputPath: string, outputPath: string): Promise<void
 
     ffmpeg(inputPath)
       .audioCodec('libopus')
-      .audioBitrate('256k')
-      .audioChannels(2)  // Ensure stereo output
+      .audioBitrate('64k')        // Changed from 256k to 64k
+      .audioChannels(1)           // Changed from 2 to 1 (mono)
       .outputOptions([
+        '-ar 24000',              // Added 24kHz sample rate
         '-vbr on',
-        '-compression_level 10',  // Highest compression level
-        '-application audio',
-        '-frame_duration 60',  // Larger frame size for better compression
-        '-packet_loss 3',  // Optimize for some packet loss, which can improve compression
-        '-mapping_family 1',  // Use new channel mapping family for better quality
-        '-threads 0'  // Use all available CPU threads
+        '-compression_level 10',
+        '-frame_duration 60',
+        '-packet_loss 3',
+        '-mapping_family 1',
+        '-threads 0.9' // Use 90% of PC resources
       ])
-      .output(outputPath.replace(/\.[^/.]+$/, ".opus"))
+      .output(outputPath.replace(/\.[^/.]+$/, '.opus'))
       .on('start', (commandLine) => {
-        console.log('Spawned FFmpeg with command: ' + commandLine);
+        console.log('Spawned FFmpeg with command: ' + commandLine)
       })
       .on('progress', (progress) => {
         latestProgress = progress.percent
-        console.log('Progress update:', { inputPath, progressPercent: latestProgress })
+        console.log('Progress update:', inputPath, latestProgress)
       })
       .on('stderr', (stderrLine) => {
-        console.log(`FFmpeg stderr: ${stderrLine}`);
+        console.log(`FFmpeg stderr: ${stderrLine}`)
       })
       .on('error', (err, stdout, stderr) => {
         clearInterval(progressInterval)
-        console.error('Error:', err.message);
-        console.error('FFmpeg stdout:', stdout);
-        console.error('FFmpeg stderr:', stderr);
+        console.error('Error:', err.message)
+        console.error('FFmpeg stdout:', stdout)
+        console.error('FFmpeg stderr:', stderr)
         sendToRenderer('CONVERSION_ERROR', inputPath, err.message)
         reject(err)
       })
       .on('end', () => {
+        console.log('completed conversion of ', inputPath)
         clearInterval(progressInterval)
-        sendToRenderer('CONVERSION_COMPLETE', inputPath)
+        latestProgress = 100
+        sendToRenderer('LIVE_PROGRESS', inputPath, latestProgress)
         resolve()
       })
       .run()
@@ -133,10 +139,6 @@ async function convertVideo(inputPath: string, outputPath: string): Promise<void
 
     // Send prgoress report to front every 0.5 secs
     const progressInterval = setInterval(() => {
-      console.log('sending to renderer from Interval!', {
-        inputPath,
-        progressPercent: latestProgress
-      })
       sendToRenderer('LIVE_PROGRESS', inputPath, latestProgress)
     }, 500)
 
@@ -176,7 +178,7 @@ async function convertVideo(inputPath: string, outputPath: string): Promise<void
           .outputOptions(['-b:a 256k']) // Set audio bitrate to 256kbps for high quality
           .on('progress', (progress) => {
             latestProgress = progress.percent
-            console.log('Progress update:', { inputPath, progressPercent: latestProgress })
+            console.log('Progress update:', inputPath, latestProgress)
           })
           .on('error', (err) => {
             clearInterval(progressInterval)
@@ -185,7 +187,8 @@ async function convertVideo(inputPath: string, outputPath: string): Promise<void
           })
           .on('end', () => {
             clearInterval(progressInterval)
-            sendToRenderer('CONVERSION_COMPLETE', inputPath)
+            latestProgress = 100
+            sendToRenderer('LIVE_PROGRESS', inputPath, latestProgress)
             resolve()
           })
           .save(outputPath)
@@ -197,13 +200,10 @@ async function convertVideo(inputPath: string, outputPath: string): Promise<void
 async function convertImage(inputPath: string, outputPath: string): Promise<void> {
   return new Promise((resolve, reject) => {
     let latestProgress = 0
+    sendToRenderer('LIVE_PROGRESS', inputPath, latestProgress)
 
     // Send live progress reports at 0.5s intervals
     const progressInterval = setInterval(() => {
-      console.log('sending to renderer from Interval!', {
-        inputPath,
-        progressPercent: latestProgress
-      })
       sendToRenderer('LIVE_PROGRESS', inputPath, latestProgress)
     }, 500)
 
@@ -223,10 +223,6 @@ async function convertImage(inputPath: string, outputPath: string): Promise<void
     ffmpeg(inputPath)
       .outputOptions(avifOptions)
       .toFormat('avif') // Specify output format as AVIF
-      .on('progress', (progress) => {
-        latestProgress = progress.percent
-        console.log('Progress update:', { inputPath, progressPercent: latestProgress })
-      })
       .on('error', (err) => {
         clearInterval(progressInterval)
         sendToRenderer('CONVERSION_ERROR', inputPath, err.message)
@@ -234,9 +230,42 @@ async function convertImage(inputPath: string, outputPath: string): Promise<void
       })
       .on('end', () => {
         clearInterval(progressInterval)
-        sendToRenderer('CONVERSION_COMPLETE', inputPath)
+        latestProgress = 100
+        sendToRenderer('LIVE_PROGRESS', inputPath, latestProgress)
         resolve()
       })
       .save(outputPath)
   })
 }
+
+export const getFFmpegPath = () => {
+  console.log('hello from getFFmpeg path')
+  const ffmpegPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'bin', 'ffmpeg.exe')
+    : path.join(app.getAppPath(), 'resources', 'bin', 'ffmpeg.exe');
+    
+  console.log('FFmpeg Path:', {
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    appPath: app.getAppPath(),
+    finalPath: ffmpegPath
+  });
+  
+  return ffmpegPath;
+};
+
+export const getFFprobePath = () => {
+  console.log('hello from getFFprobePath')
+  const ffprobePath = app.isPackaged
+    ? path.join(process.resourcesPath, 'bin', 'ffprobe.exe')
+    : path.join(app.getAppPath(), 'resources', 'bin', 'ffprobe.exe');
+    
+  console.log('FFprobe Path:', {
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    appPath: app.getAppPath(),
+    finalPath: ffprobePath
+  });
+  
+  return ffprobePath;
+};

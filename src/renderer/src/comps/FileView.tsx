@@ -1,13 +1,46 @@
-import { useState, Fragment } from 'react'
+import { useState, Fragment, useEffect } from 'react'
 import { Button } from 'antd'
 import { DirItem } from '../../../types'
 import { FaTrash, FaChevronDown, FaChevronRight } from 'react-icons/fa'
 import { useExplorer } from '../ExplorerContext'
+import { IpcRendererEvent } from 'electron'
+import _ from 'lodash'
+import ProgressIndicator from './ProgressIndicator'
 
 export default function FileView(): JSX.Element {
   const [dragOverScreen, setDragOverScreen] = useState<boolean>(false)
 
-  const { explorer, setExplorer, expandFolder, deleteItem } = useExplorer()
+  const { explorer, setExplorer, expandFolder, deleteItem, convertClicked } = useExplorer()
+
+  const updateItemProgress = (items: DirItem[], path: string, progress: number): DirItem[] => {
+    return items.map((item) => {
+      if (item.path === path) {
+        return { ...item, progress }
+      } else if (item.children) {
+        return {
+          ...item,
+          children: updateItemProgress(item.children, path, progress)
+        }
+      }
+      return item
+    })
+  }
+
+  useEffect(() => {
+    const handleProgressUpdate = (
+      _event: IpcRendererEvent,
+      inputPath: string,
+      latestProgress: number
+    ): void => {
+      setExplorer((prevExplorer) => updateItemProgress(prevExplorer, inputPath, latestProgress))
+    }
+
+    window.electron.ipcRenderer.on('LIVE_PROGRESS', handleProgressUpdate)
+
+    return (): void => {
+      window.electron.ipcRenderer.removeListener('LIVE_PROGRESS', handleProgressUpdate)
+    }
+  }, [])
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>): void => {
     e.preventDefault()
@@ -25,6 +58,7 @@ export default function FileView(): JSX.Element {
     console.log('drop detected')
     const pathsToDetail = Array.from(e.dataTransfer.files).map((file) => file.path)
     const res = await window.electron.ipcRenderer.invoke('GET_DETAILS', pathsToDetail)
+    console.log('detiled res is', res)
 
     setExplorer(res)
   }
@@ -32,12 +66,13 @@ export default function FileView(): JSX.Element {
   const importDirs = async (type: 'folder' | 'file'): Promise<void> => {
     console.log(`Importing ${type}`)
     const res = await window.electron.ipcRenderer.invoke('SELECT_DIRS', { type })
+    console.log('detiled res is', res)
 
     setExplorer(res)
   }
 
   const renderDirItems = (items: DirItem[], depth: number = 0): JSX.Element[] => {
-    return items.map((dir: DirItem, index: number) => (
+    return items.map((dir, index) => (
       <Fragment key={`${depth}-${index}`}>
         <tr className="border-b border-gray-700 hover:bg-gray-800">
           <td className="p-3 w-24 text-lg">
@@ -52,12 +87,14 @@ export default function FileView(): JSX.Element {
               ) : (
                 <div className="w-8"></div> // Placeholder for alignment
               )}
-              <Button
-                onClick={() => deleteItem(index, depth)}
-                className="bg-red-600 hover:bg-red-700 text-white p-2 rounded ml-2"
-              >
-                <FaTrash size={14} />
-              </Button>
+              {!convertClicked && (
+                <Button
+                  onClick={() => deleteItem(index, depth)}
+                  className="bg-red-600 hover:bg-red-700 text-white p-2 rounded ml-2"
+                >
+                  <FaTrash size={14} />
+                </Button>
+              )}
             </div>
           </td>
           <td className="p-3 text-lg">
@@ -71,9 +108,15 @@ export default function FileView(): JSX.Element {
             </div>
           </td>
           <td className="p-3 text-lg">{dir.size}</td>
-          <td className="p-3 text-lg">{dir.duration || '-'}</td>
+          <td className="p-3 text-lg">{dir.duration}</td>
+          <td className="p-3 text-lg">
+            <ProgressIndicator fileType={dir.ext} progress={dir.progress || 0} />
+          </td>
         </tr>
-        {dir.children && dir.isExpanded && renderDirItems(dir.children, depth + 1)}
+        {dir.children &&
+          dir.isExpanded &&
+          // Filter out null or undefined children before rendering
+          renderDirItems(dir.children, depth + 1)}
       </Fragment>
     ))
   }
@@ -94,7 +137,13 @@ export default function FileView(): JSX.Element {
           {dragOverScreen ? (
             <h1 className="text-2xl font-bold text-blue-400">Drop files here</h1>
           ) : (
-            <div className="text-center">
+            <div className="flex justify-center items-center flex-col">
+              <div className="w-[60%] mb-6 text-center">
+                <h1 className="text-xl font-bold text-gray-400">
+                  Greetings, videos will be converted to AV1, images will be converted to AVIF,
+                  audios will be converted to OPUS
+                </h1>
+              </div>
               <div className="flex justify-center space-x-4 mb-6">
                 <Button
                   onClick={() => importDirs('folder')}
@@ -117,10 +166,13 @@ export default function FileView(): JSX.Element {
         <table className="w-full border-collapse">
           <thead>
             <tr className="bg-gray-800 text-left">
-              <th className="p-3 w-24 text-lg"></th> {/* Actions column */}
-              <th className="p-3 text-lg">Name</th>
-              <th className="p-3 text-lg">Size</th>
-              <th className="p-3 text-lg">Duration</th>
+              <>
+                <th className="p-3 w-24 text-lg"></th>
+                <th className="p-3 text-lg">Name</th>
+                <th className="p-3 text-lg">Size</th>
+                <th className="p-3 text-lg">Duration</th>
+                <th className="p-3 text-lg">Progress</th>
+              </>
             </tr>
           </thead>
           <tbody>{renderDirItems(explorer)}</tbody>

@@ -7,6 +7,7 @@ const ExplorerContext = createContext<ExplorerContextType | undefined>(undefined
 
 export const ExplorerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [explorer, setExplorer] = useState<DirItem[]>([])
+  const [convertClicked, setConvertClicked] = useState<boolean>(false)
 
   // Config 'no children' notification
   const showEmptyFolderNotification = (): void => {
@@ -19,44 +20,49 @@ export const ExplorerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     })
   }
 
-  // Those function are quite complex. I won't lie, I mostly used Claude for those, which is why I made sure to place descriptive comments
+  // Function to recursively collapse all subfolders and handle null values
+  const collapseAll = (items: DirItem[]): DirItem[] => {
+    return items.map((item) => {
+      if (!item) return item
+
+      return {
+        ...item,
+        isExpanded: false,
+        children: item.children ? collapseAll(item.children) : undefined
+      }
+    })
+  }
+
+  // Function to expand or collapse a folder at a specific index and depth
   const expandFolder = (index: number, depth: number): void => {
-    setExplorer((prevExplorer) => {
-      // Main function to update the explorer structure
+    setExplorer((prevExplorer: DirItem[]) => {
       const updateExplorer = (items: DirItem[], currentDepth: number): DirItem[] => {
         return items.map((item, i) => {
+          if (!item) return item
+
           if (i === index && currentDepth === depth) {
             if (!item.children || item.children.length === 0) {
               showEmptyFolderNotification()
-              return item // Don't toggle if empty
+              return item
             }
+
             const newIsExpanded = !item.isExpanded
             return {
               ...item,
               isExpanded: newIsExpanded,
-              // If expanding, keep children as is. If collapsing, collapse all subfolders
               children: newIsExpanded ? item.children : collapseAll(item.children)
             }
           }
-          if (item.children) {
-            return { ...item, children: updateExplorer(item.children, currentDepth + 1) }
+
+          return {
+            ...item,
+            children: item.children ? updateExplorer(item.children, currentDepth + 1) : undefined
           }
-          return item
         })
       }
 
-      // Start the update process from the top level
       return updateExplorer(prevExplorer, 0)
     })
-  }
-
-  // Helper function to recursively collapse all subfolders
-  const collapseAll = (items: DirItem[] | undefined): DirItem[] | undefined => {
-    return items?.map((item) => ({
-      ...item,
-      isExpanded: false,
-      children: collapseAll(item.children)
-    }))
   }
 
   const deleteItem = (index: number, depth: number): void => {
@@ -83,7 +89,9 @@ export const ExplorerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }
 
   return (
-    <ExplorerContext.Provider value={{ explorer, setExplorer, expandFolder, deleteItem }}>
+    <ExplorerContext.Provider
+      value={{ explorer, setExplorer, convertClicked, setConvertClicked, expandFolder, deleteItem }}
+    >
       {children}
     </ExplorerContext.Provider>
   )
