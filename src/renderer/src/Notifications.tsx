@@ -1,5 +1,5 @@
 import { notification } from 'antd'
-import { InfoCircleOutlined, CheckCircleOutlined } from '@ant-design/icons'
+import { InfoCircleOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons'
 
 // Config 'no selected files' notification
 export const showSelectedFilesNotification = (): void => {
@@ -30,5 +30,25 @@ export const showConversionStoppedNotification = (): void => {
     icon: <InfoCircleOutlined style={{ color: '#1890ff' }} />,
     placement: 'topRight',
     duration: 3
+  })
+}
+
+export const showConversionErrorNotification = (filename: string, errorMessage: string): void => {
+  notification.error({
+    message: 'Conversion Error',
+    description: `Error with file '${filename}': ${errorMessage}. Please hold while FFMPEG stops completely`,
+    icon: <CloseCircleOutlined style={{ color: '#ff4d4f' }} />,
+    placement: 'topRight',
+    duration: 30
+  })
+}
+
+export const showEmptyFolderNotification = (): void => {
+  notification.info({
+    message: 'Empty Folder',
+    description: 'This folder does not contain any items.',
+    icon: <InfoCircleOutlined style={{ color: '#1890ff' }} />,
+    placement: 'topRight',
+    duration: 10
   })
 }

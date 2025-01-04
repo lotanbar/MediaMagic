@@ -1,98 +1,110 @@
 import { ipcMain, IpcMainInvokeEvent, dialog } from 'electron'
 import { ExecException } from 'child_process'
 import { lstat, readdir } from 'fs/promises'
-import { isValidExt, getDuration, convertExplorer } from './utils'
 import path, { parse, join } from 'path'
 import bytes from 'bytes'
 import { getFolderSize } from 'go-get-folder-size'
 import { DirItem } from '../types'
 import { exec } from 'child_process'
 import { promisify } from 'util'
+import { isValidExt, getDuration } from './fileUtils'
+import { convertExplorer } from './ffmpegUtils'
 
 const execAsync = promisify(exec)
+let isIpcInitialized = false
 
 export default function ipc(): void {
+  if (isIpcInitialized) {
+    console.log('IPC handlers already initialized, skipping...')
+    return
+  }
+
+  // Clean up any existing handlers
+  try {
+    ipcMain.removeHandler('SELECT_DIRS')
+    ipcMain.removeHandler('GET_DETAILS')
+    ipcMain.removeHandler('SELECT_OUTPUT_DIR')
+    ipcMain.removeHandler('CONVERT_EXPLORER')
+    ipcMain.removeHandler('STOP_ALL_FFMPEG_PROCESSES')
+  } catch (error) {
+    // Ignore errors from removing non-existent handlers
+  }
+
+  // Register handlers
   ipcMain.handle('SELECT_DIRS', handleSelectDirs)
   ipcMain.handle('GET_DETAILS', handleGetDetails)
   ipcMain.handle('SELECT_OUTPUT_DIR', handleSelectOutputDir)
   ipcMain.handle('CONVERT_EXPLORER', handleConvertExplorer)
-  ipcMain.handle('IS_FFMPEG_ACTIVE', handleIsFFMPEGActive)
   ipcMain.handle('STOP_ALL_FFMPEG_PROCESSES', handleStopAllFFMPEGProcesses)
+
+  isIpcInitialized = true
+  console.log('IPC handlers initialized successfully')
 }
 
-// Accept event and object if the func was called via dnd in front, or pathsToDetail if it was called via handleSelectDir
+// This is the app's core function - I'll add heavy commenting
 const handleGetDetails = async (
   _e: IpcMainInvokeEvent | null,
   pathsToDetail: string[]
 ): Promise<DirItem[]> => {
   const res = await Promise.allSettled<DirItem | undefined>(
-    // 1. Check paths type - file/folder
     pathsToDetail.map(async (path: string) => {
       try {
-        console.log('about to detail files')
-        const stats = await lstat(path)
+        console.log('Processing path:', path)
+        const stats = await lstat(path) // Is file or folder
+
         if (stats.isDirectory()) {
-          const childNames = await readdir(path) // Get children names
-          // Recursively get children details
+          // If folder
+          const childNames = await readdir(path) // readdir gets the paths of the children items
           const children = await Promise.all(
+            // Then we get the DirItem(s) of the children - the process might be repeated nested
             childNames.map(async (childName: string) => {
-              return await handleGetDetails(null, [join(path, childName)])
+              return await handleGetDetails(null, [join(path, childName)]) // Refer to DirItem type structure to understand the return value
             })
           )
 
-          // Ensure children property is properly typed in return value
+          // After running the func above many times, we should have a nested structure like below - with children under children under children etc
+          // This is where we sign the final version of the detailedFolder, all children will have similar props
           const detailedFolder: DirItem = {
             path,
             isExpanded: false,
-            name: parse(path).base,
+            name: parse(path).base, // gets the last item in the path - c:/documents/hailmary => hailmary
             type: 'folder',
-            size: bytes(await getFolderSize(path)),
-            children: children.flat() as DirItem[] // Explicitly type the flattened array
+            size: bytes(await getFolderSize(path)), // bytes() formats the size in bytes we get from getFolderSize
+            children: children.flat() as DirItem[] // Flattens Promise.all results into single array of items
           }
 
           return detailedFolder
-        } else if (stats.isFile() && isValidExt(path)) {
-          const pathExt = isValidExt(path)
+        }
+
+        if (stats.isFile()) {
+          // If that's a file
+          const pathExt = isValidExt(path) // Returns 'video'/'image'/'audio' if the ext is valid and null if invalid
           if (pathExt !== null) {
-            // Add null check
+            // If different than null (if valid)
             const detailedFile: DirItem = {
               path,
               name: parse(path).base,
               type: 'file',
-              ext: pathExt, // Now pathExt is guaranteed to be 'video' | 'audio' | 'image'
+              ext: pathExt,
               size: bytes(stats.size),
-              duration: ['video', 'audio'].includes(pathExt) ? await getDuration(path) : 'none'
+              // Calculate duration only if its an audio/video - duration returned is already formatted to hh:mm:ss
+              duration: ['video', 'audio'].includes(pathExt!) ? await getDuration(path) : 'none' // Not really sure about the 'cannot be undefined' issue with pathExt, solved it with ! anyways...
             }
             return detailedFile
           }
         }
 
         return undefined
-      } catch (err: unknown) {
-        // Type guard to check if err is an Error object
+      } catch (err) {
         if (err instanceof Error) {
+          console.error(`Error processing path ${path}:`, err)
           throw new Error(`Error processing path ${path}: ${err.message}`)
         }
-        // Handle non-Error objects
         throw new Error(`Error processing path ${path}: Unknown error`)
       }
     })
   )
 
-  const getCircularReplacer = () => {
-    const seen = new WeakSet()
-    return (_key: string, value: unknown): unknown => {
-      if (typeof value === 'object' && value !== null) {
-        if (seen.has(value)) {
-          return '[Circular]'
-        }
-        seen.add(value)
-      }
-      return value
-    }
-  }
-
-  // Helper function to filter and type-check settled promises
   const filteredRes = (items: PromiseSettledResult<DirItem | undefined>[]): DirItem[] => {
     return items.reduce((acc: DirItem[], item) => {
       if (item.status === 'fulfilled' && item.value !== undefined) {
@@ -102,91 +114,74 @@ const handleGetDetails = async (
     }, [])
   }
 
-  console.log('explorer is', JSON.stringify(filteredRes(res), getCircularReplacer(), 2))
-  return filteredRes(res)
+  const result = filteredRes(res)
+  console.log('Processing completed, found items:', result.length)
+  return result
 }
 
-async function handleConvertExplorer(
+const handleConvertExplorer = async (
   _e: IpcMainInvokeEvent,
   { explorer, outputDir }: { explorer: DirItem[]; outputDir: string }
-): Promise<void> {
-  const newOutputDir = path.join(outputDir, 'converted') // Create 'Converted' folder in output dir
+): Promise<void> => {
+  const newOutputDir = path.join(outputDir, 'converted')
+  console.log('Output is located in:', newOutputDir)
   await convertExplorer(explorer, newOutputDir)
 }
 
-async function handleSelectDirs(
+const handleSelectDirs = async (
   _e: IpcMainInvokeEvent,
   { type }: { type: string }
-): Promise<DirItem[]> {
-  console.log('type is', type)
+): Promise<DirItem[]> => {
+  console.log('Selection type:', type)
   const res = await dialog.showOpenDialog({
     properties:
       type === 'file' ? ['openFile', 'multiSelections'] : ['openDirectory', 'multiSelections']
   })
 
   if (res.canceled) {
-    throw new Error('err in handleSelectDir in ipc.ts')
-  } else {
-    // Standardize function
-    const pathsToDetail = res.filePaths
-    const explorer = await handleGetDetails(null, pathsToDetail)
-
-    return explorer
+    throw new Error('Selection cancelled by user')
   }
+
+  const pathsToDetail = res.filePaths
+  console.log('Selected paths:', pathsToDetail)
+  const explorer = await handleGetDetails(null, pathsToDetail)
+  return explorer
 }
 
-async function handleSelectOutputDir(_e: IpcMainInvokeEvent): Promise<string> {
-  console.log('select output dir')
+// eslint-disable-next-line
+const handleSelectOutputDir = async (_e: IpcMainInvokeEvent): Promise<string> => { 
+  console.log('Selecting output directory')
   const res = await dialog.showOpenDialog({
     properties: ['openDirectory']
   })
+
   if (res.canceled) {
-    throw new Error('err in handleSelectDir in ipc.ts')
-  } else {
-    console.log('selected res is', res)
-    return res.filePaths[0]
+    throw new Error('Output directory selection cancelled')
   }
+
+  console.log('Selected output directory:', res.filePaths[0])
+  return res.filePaths[0]
 }
 
-// Check if any FFMPEG processes are currently running
-async function handleIsFFMPEGActive(): Promise<boolean> {
-  const command =
-    process.platform === 'win32'
-      ? 'tasklist | findstr "ffmpeg"'
-      : 'ps aux | grep ffmpeg | grep -v grep'
-
-  try {
-    const { stdout } = await execAsync(command)
-    return typeof stdout === 'string' && stdout.trim().length > 0
-  } catch (error: unknown) {
-    // Type guard to check if error is an object with a code property
-    if (error && typeof error === 'object' && 'code' in error && error.code !== 1) {
-      console.error('Error checking FFMPEG:', error)
-    }
-    return false
-  }
-}
-
-export async function handleStopAllFFMPEGProcesses(): Promise<string> {
-  console.log('killing all FFMPEG processes')
-
-  // Command based on platform
+export const handleStopAllFFMPEGProcesses = async (): Promise<string> => {
+  console.log('Stopping all FFmpeg processes')
   const command = process.platform === 'win32' ? 'taskkill /F /IM ffmpeg.exe' : 'pkill -9 ffmpeg'
 
   try {
     const { stdout, stderr } = await execAsync(command)
 
-    if (stderr) {
-      console.error(`Stderr: ${stderr}`)
+    if (stderr && !stderr.includes('not found')) {
+      console.error('Error output:', stderr)
       throw new Error(stderr)
     }
 
-    console.log(`FFmpeg processes terminated: ${stdout}`)
-    return stdout
-  } catch (error: unknown) {
-    // Type guard to handle ExecException specifically
+    return stdout || 'No FFmpeg processes were running'
+  } catch (error) {
     const execError = error as ExecException
-    console.error(`Error stopping FFmpeg processes: ${execError.message}`)
+    if (execError.message.includes('not found')) {
+      return 'No FFmpeg processes were running'
+    }
+    console.error('Error stopping FFmpeg processes:', execError)
     throw execError
   }
 }

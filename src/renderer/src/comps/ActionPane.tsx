@@ -4,8 +4,8 @@ import { useExplorer } from '../ExplorerContext'
 import { Button, Input, Progress } from 'antd'
 import {
   showSelectedFilesNotification,
-  showConversionSuccessNotification,
-  showConversionStoppedNotification
+  showConversionStoppedNotification,
+  showConversionSuccessNotification
 } from '../Notifications'
 
 export default function ActionPane(): JSX.Element {
@@ -13,48 +13,42 @@ export default function ActionPane(): JSX.Element {
 
   const { explorer, setExplorer, convertClicked, setConvertClicked } = useExplorer()
 
+  // Called if the output path is changed
   const handleSelectOutputDir = async (): Promise<void> => {
     const res = await window.electron.ipcRenderer.invoke('SELECT_OUTPUT_DIR')
     setOutputDir(res)
   }
 
+  // Called if the CONVERT button is clicked
   const handleConvertExplorer = async (): Promise<void> => {
-    // Clone explorer
+    // Explorer must be cloned to ensure clean data transmission between processes
+    // State objects may contain non-serializable properties that would break IPC
     if (explorer.length > 0 && outputDir.length > 0) {
-      setConvertClicked(true)
+      setConvertClicked(true) // To modify UI
       const clonedExplorer = cloneDeep(explorer) // Properly cloning the explorer
       const props = { explorer: clonedExplorer, outputDir } // Create props object with cloned explorer
-      console.log('sending', props)
+      console.log('about to convert ', props)
       await window.electron.ipcRenderer.invoke('CONVERT_EXPLORER', props)
     } else {
-      showSelectedFilesNotification()
+      showSelectedFilesNotification() // Notify the user if an empty folder was selected
     }
-  }
-
-  // Check if any FFMPEG process is running
-  const isFFMPEGActive = async (): Promise<boolean> => {
-    return await window.electron.ipcRenderer.invoke('IS_FFMPEG_ACTIVE')
   }
 
   useEffect(() => {
-    let intervalId: NodeJS.Timeout | null = null
-
-    if (convertClicked) {
-      intervalId = setInterval(async () => {
-        const status = await isFFMPEGActive()
-        if (!status) {
-          setConvertClicked(false)
-          showConversionSuccessNotification()
-          setExplorer([]) // Clear All
-        }
-      }, 1000)
+    const handleConversionComplete = (): void => {
+      console.log('detected CONVERSION_COMPLETE from front')
+      setExplorer([]) // Clear state and UI
+      setConvertClicked(false) // Reset loading bar
+      showConversionSuccessNotification() // Show notification
     }
+    window.electron.ipcRenderer.on('CONVERSION_COMPLETE', handleConversionComplete)
 
-    return () => {
-      if (intervalId) clearInterval(intervalId)
+    return (): void => {
+      window.electron.ipcRenderer.removeListener('CONVERSION_COMPLETE', handleConversionComplete)
     }
-  }, [convertClicked, setConvertClicked])
+  }, [])
 
+  // Called if the STOP button is clicked
   const stopAllFFmpegProcesses = async (): Promise<void> => {
     await window.electron.ipcRenderer.invoke('STOP_ALL_FFMPEG_PROCESSES')
     setConvertClicked(false)

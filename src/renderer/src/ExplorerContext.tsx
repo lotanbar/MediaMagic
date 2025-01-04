@@ -1,24 +1,12 @@
 import React, { createContext, useState, useContext } from 'react'
 import { DirItem, ExplorerContextType } from '../../types'
-import { notification } from 'antd'
-import { InfoCircleOutlined } from '@ant-design/icons'
+import { showEmptyFolderNotification } from './Notifications'
 
 const ExplorerContext = createContext<ExplorerContextType | undefined>(undefined)
 
 export const ExplorerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [explorer, setExplorer] = useState<DirItem[]>([])
   const [convertClicked, setConvertClicked] = useState<boolean>(false)
-
-  // Config 'no children' notification
-  const showEmptyFolderNotification = (): void => {
-    notification.info({
-      message: 'Empty Folder',
-      description: 'This folder does not contain any items.',
-      icon: <InfoCircleOutlined style={{ color: '#1890ff' }} />,
-      placement: 'topRight',
-      duration: 10
-    })
-  }
 
   // Function to recursively collapse all subfolders and handle null values
   const collapseAll = (items: DirItem[]): DirItem[] => {

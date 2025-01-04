@@ -2,9 +2,9 @@ import { useState, Fragment, useEffect } from 'react'
 import { Button } from 'antd'
 import { DirItem } from '../../../types'
 import { FaTrash, FaChevronDown, FaChevronRight } from 'react-icons/fa'
+import { showConversionErrorNotification } from '../Notifications'
 import { useExplorer } from '../ExplorerContext'
 import { IpcRendererEvent } from 'electron'
-import _ from 'lodash'
 import ProgressIndicator from './ProgressIndicator'
 
 export default function FileView(): JSX.Element {
@@ -35,10 +35,20 @@ export default function FileView(): JSX.Element {
       setExplorer((prevExplorer) => updateItemProgress(prevExplorer, inputPath, latestProgress))
     }
 
+    const handleConversionError = (
+      _event: IpcRendererEvent,
+      inputPath: string,
+      errorMessage: string
+    ): void => {
+      showConversionErrorNotification(inputPath, errorMessage)
+    }
+
     window.electron.ipcRenderer.on('LIVE_PROGRESS', handleProgressUpdate)
+    window.electron.ipcRenderer.on('CONVERSION_ERROR', handleConversionError)
 
     return (): void => {
       window.electron.ipcRenderer.removeListener('LIVE_PROGRESS', handleProgressUpdate)
+      window.electron.ipcRenderer.removeListener('CONVERSION_ERROR', handleConversionError)
     }
   }, [])
 

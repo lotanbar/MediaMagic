@@ -1,0 +1,7 @@
+restructure main dir
+hide prettier changes from git diff while still including them in the commit - not sure if it works though don't really care for now
+implement Husky and adjust eslint to expect arrow functions
+fix image conversion error by scaling image before conversion
+fix premature 'Conversion Successful' notification by tracking total progress in the back and using a CONVERSION_COMPLETE listener both in ffmpegUtils.ts and FileView.tsx
+remove the intervals for live progress in ffmpegUtils.ts - instead directly call the front with the 'progress' ffmpeg event
+remove the very odd logging function in index.ts and replace it with a functional logToRenderer func

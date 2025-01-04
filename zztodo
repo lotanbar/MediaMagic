@@ -1,0 +1,14 @@
+USE HUSKY WITH CONVENTIONAL COMMIT!
+test bigtime then go running
+
+I think including it all in one commit is advisable - the restructuring hte bug fix, husky etc
+also squash the update readme commit, it's dirtying my repo
+
+a long run commit:
+restructuring the front comps as well for better readability is advisable. But for now I think that's enough
+do not allow to LOAD, instead of expand/convert empty folders - add another checker to handleGetDetails or something similar
+solve this white window thing - the entirecomp is running twice - check logs
+solve the packaging issue
+
+a really long run commit:
+ADD TESTING!

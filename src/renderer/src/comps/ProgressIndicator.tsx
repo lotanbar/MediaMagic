@@ -26,7 +26,13 @@ const CenteredContainer = styled.div`
   height: 100%;
 `
 
-const ProgressIndicator = ({ fileType, progress }: { fileType: ext; progress: number }) => {
+const ProgressIndicator = ({
+  fileType,
+  progress
+}: {
+  fileType: ext
+  progress: number
+}): JSX.Element => {
   const { convertClicked } = useExplorer()
   const iconSize = 36 // Consistent size for both spinner and checkmark
 
