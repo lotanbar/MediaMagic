@@ -21,24 +21,39 @@ export const ExplorerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     })
   }
 
-  // Function to expand or collapse a folder at a specific index and depth
-  const expandFolder = (index: number, depth: number): void => {
+  // Since size is unique to each folder - it'll be used to solve the multiple folders openings in cases where there are several
+  // folders with the same index within the same dir depth
+  // The index represents the location of the specific folder within the dir's depth level, which is represented by 'depth'
+  const expandFolder = (size: string, index: number, depth: number): void => {
+    console.log('the size of the clicked folder is', size)
+    // Place the entire functionality inside the setExplorer to work on the state's content
     setExplorer((prevExplorer: DirItem[]) => {
+      // The actual logic to find the correct folder 'Items' equal the entirety/part of prevExplorer
       const updateExplorer = (items: DirItem[], currentDepth: number): DirItem[] => {
+        /* The index increases after each iteration - thus presenting the move to the next file/folder in the iteration
+           the actual depth level is defined, as mentioned above , by the currentDepth param */
         return items.map((item, i) => {
+          /* The line below should technically handle null checks - ideally only the isExpanded values should be modified in 
+             this func - the state should remain clean otherwise - thus irrelevant items must be returned.
+             What's odd is that undefined/nulls shouldn't exist after the filtering in the backend.
+             I'll leave it anyways in case I'm missing something - PERHAPS IT'S A TS THING!?!?
+          */
           if (!item) return item
 
-          if (i === index && currentDepth === depth) {
+          // If we found the relevant index (the folder's id) within the correct depth level, we may proceed
+          if (item.size == size && i === index && currentDepth === depth) {
+            // The dir was already filtered in the backend and should now contain media files only - empty folders would be those that didn't have media files at all
             if (!item.children || item.children.length === 0) {
+              // The double conditional is for TS purposes
               showEmptyFolderNotification()
-              return item
+              return item // Make sure the inspected item is returned - otherwise it would be removed from the state
             }
 
-            const newIsExpanded = !item.isExpanded
+            const toggledIsExpanded = !item.isExpanded
             return {
               ...item,
-              isExpanded: newIsExpanded,
-              children: newIsExpanded ? item.children : collapseAll(item.children)
+              isExpanded: toggledIsExpanded,
+              children: toggledIsExpanded ? item.children : collapseAll(item.children)
             }
           }
 
@@ -49,17 +64,19 @@ export const ExplorerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         })
       }
 
+      // Call the updateExplorer func on the entire state and start from dir level 0
       return updateExplorer(prevExplorer, 0)
     })
   }
 
-  const deleteItem = (index: number, depth: number): void => {
+  // Do the same as done in the expandFolder to avoid double delete - read above
+  const deleteItem = (size: string, index: number, depth: number): void => {
     setExplorer((prevExplorer) => {
       // Recursive function to update the explorer structure
       const updateExplorer = (items: DirItem[], currentDepth: number): DirItem[] => {
         return items.filter((item, i) => {
           // If this is the item to delete, remove it by returning false
-          if (i === index && currentDepth === depth) {
+          if (item.size == size && i === index && currentDepth === depth) {
             return false
           }
           // If item has children, recursively update them

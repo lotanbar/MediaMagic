@@ -149,7 +149,7 @@ const handleSelectDirs = async (
 }
 
 // eslint-disable-next-line
-const handleSelectOutputDir = async (_e: IpcMainInvokeEvent): Promise<string> => { 
+const handleSelectOutputDir = async (_e: IpcMainInvokeEvent): Promise<string> => {
   console.log('Selecting output directory')
   const res = await dialog.showOpenDialog({
     properties: ['openDirectory']

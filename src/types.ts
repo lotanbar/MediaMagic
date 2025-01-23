@@ -17,8 +17,8 @@ export type ExplorerContextType = {
   setExplorer: React.Dispatch<React.SetStateAction<DirItem[]>>
   convertClicked: boolean
   setConvertClicked: React.Dispatch<React.SetStateAction<boolean>>
-  expandFolder: (index: number, depth: number) => void
-  deleteItem: (index: number, depth: number) => void
+  expandFolder: (size: string, index: number, depth: number) => void
+  deleteItem: (size: string, index: number, depth: number) => void
 }
 
 export type ext = 'video' | 'audio' | 'image' | null | undefined

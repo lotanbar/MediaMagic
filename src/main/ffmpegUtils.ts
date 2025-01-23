@@ -117,16 +117,17 @@ const convertVideo = async (inputPath: string, outputPath: string): Promise<void
 
   return new Promise((resolve, reject) => {
     const commonOptions = [
-      '-c:v libaom-av1',
-      '-crf 22',
-      '-b:v 0',
-      '-cpu-used 6',
-      '-row-mt 1',
-      '-tile-columns 2',
-      '-tile-rows 2',
-      '-threads 2',
-      '-aq-mode 2',
-      '-g 240'
+      '-c:v libaom-av1', // Video codec - AV1 encoder
+      '-crf 22', // Constant Rate Factor - controls quality (lower = better)
+      '-b:v 0', // Sets variable bitrate (VBR) mode by specifying 0 for the video bitrate. This lets the CRF value control quality instead of targeting a specific bitrate.
+      '-cpu-used 4', // Encoding speed (0-8, higher = faster but lower quality)
+      '-row-mt 1', // Enable row-based multithreading
+      '-tile-columns 2', // Number of tile columns for parallelization
+      '-tile-rows 2', // Number of tile rows for parallelization
+      '-threads 4', // Number of threads to use for encoding
+      '-aq-mode 2', // How the encoder distributes bits across different parts of each frame. AQ mode 2 is particularly sophisticated
+      '-g 240', // Keyframe interval (in frames)
+      '-vf scale=1920:1080:flags=lanczos' // Scale video to 1080p using Lanczos algorithm - Most advanced algorithm
     ]
 
     ffmpeg(inputPath)
@@ -178,46 +179,36 @@ const convertVideo = async (inputPath: string, outputPath: string): Promise<void
 }
 
 const convertImage = async (inputPath: string, outputPath: string): Promise<void> => {
-  // As far as I'm aware, FFmpeg does not provide live progress for images - So no progressTracker or 'progress' event
-
   return new Promise((resolve, reject) => {
+    const commonOptions = [
+      '-c:v',
+      'libaom-av1', // AV1 codec for any potential encoding tasks
+      '-crf',
+      '22', // Quality setting for compression
+      '-cpu-used',
+      '4', // Speed/efficiency tradeoff
+      '-vf',
+      'scale=1920:1080:flags=lanczos', // Resize image using Lanczos scaling
+      '-f',
+      'avif'
+    ]
+
     ffmpeg(inputPath)
-      .outputOptions([
-        '-c:v',
-        'libaom-av1',
-        '-crf',
-        '30',
-        '-b:v',
-        '0',
-        '-cpu-used',
-        '6',
-        '-vf',
-        'scale=2000:-2',
-        '-row-mt',
-        '1',
-        '-tile-columns',
-        '2',
-        '-tile-rows',
-        '2',
-        '-threads',
-        '2',
-        '-strict',
-        'experimental'
-      ])
+      .outputOptions(commonOptions)
       .on('start', () => {
-        console.log('[IMAGE] Starting:', path.basename(inputPath))
+        console.log(`[IMAGE] Starting: ${path.basename(inputPath)}`)
         logToRenderer(`[IMAGE] Starting: ${path.basename(inputPath)}`)
       })
       .on('error', async (err) => {
         await handleStopAllFFMPEGProcesses()
-        resetConversionCount() // To make sure the values don't persist into next conversion
+        resetConversionCount()
         sendToRenderer('CONVERSION_ERROR', inputPath, err.message)
         reject(err)
       })
       .on('end', () => {
         sendToRenderer('LIVE_PROGRESS', inputPath, 100)
-        alreadyConverted++ // One more file was successfully converted
-        isConversionComplete() // Check if they are finally equal
+        alreadyConverted++
+        isConversionComplete()
         resolve()
       })
       .save(outputPath)

@@ -95,7 +95,6 @@ app
 
     createWindow()
     console.log('Main process is ready!')
-    logToRenderer('shit bitch')
 
     // Clean up FFmpeg processes before quit
     app.on('before-quit', async () => {

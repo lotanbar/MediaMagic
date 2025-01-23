@@ -18,7 +18,7 @@ A desktop application for efficient media file conversion, supporting various fo
 ## Status
 
 ⚠️ Currently available in development mode only due to ongoing integration issues with FFmpeg binaries in the production build.
-⚠️ A white screen might sometimes be opened with the main app for no reason... Couldn't solve it.
+⚠️ A white screen might sometimes be opened with the main app for no reason. Since the issue is not consistent I was unable to solve it.
 
 ## Platform Support
 
@@ -63,46 +63,45 @@ npm start
 
 ## **FFmpeg Binaries Path Resolution Issue**
 
-### Issue
+## FFmpeg Integration Approaches
 
-FFmpeg/FFprobe binaries not found in production build (ENOENT error). Works in development but fails in production.
+### Initial Manual Approach
+Attempted direct FFmpeg binary integration through electron-builder configuration:
 
-### Relevant Files
-
-**src/main/utils.ts**
-
-```typescript
-export const getFFmpegPath = () => {
-  if (app.isPackaged) {
-    return path.join(process.resourcesPath, 'bin', 'ffmpeg.exe')
-  } else {
-    return path.join(app.getAppPath(), 'resources', 'bin', 'ffmpeg.exe')
+```json
+{
+  "build": {
+    "files": ["out/**/*", "resources/**/*"],
+    "extraResources": [{
+      "from": "./resources/bin/",
+      "to": "bin/",
+      "filter": ["**/*"]
+    }]
   }
 }
 ```
 
-**src/main/index.ts**
+Path resolution was handled in the main process:
 
 ```typescript
-// Set FFmpeg and FFprobe paths globally
-ffmpeg.setFfmpegPath(getFFmpegPath())
-ffmpeg.setFfprobePath(getFFprobePath())
-```
-
-**package.json (build section)**
-
-```json
-"build": {
-  "files": [
-    "out/**/*",
-    "resources/**/*"
-  ],
-  "extraResources": [
-    {
-      "from": "./resources/bin/",
-      "to": "bin/",
-      "filter": ["**/*"]
-    }
-  ]
+const getFFmpegPath = () => {
+  return app.isPackaged 
+    ? path.join(process.resourcesPath, 'bin', 'ffmpeg.exe')
+    : path.join(app.getAppPath(), 'resources', 'bin', 'ffmpeg.exe')
 }
 ```
+
+Unfortunately that did not work, the built app couldn't perform any ffmpeg ops
+
+### NPM Package Approach
+Attempted using `@ffmpeg-installer/ffmpeg` and `@ffprobe-installer/ffprobe`:
+
+```typescript
+import ffmpegInstaller from '@ffmpeg-installer/ffmpeg'
+import ffprobeInstaller from '@ffprobe-installer/ffprobe'
+
+ffmpeg.setFfmpegPath(ffmpegInstaller.path)
+ffmpeg.setFfprobePath(ffprobePathFixed)
+```
+
+While this resolved the path issues, the provided FFmpeg build (v6.0) lacked AVIF encoding support required for optimal image compression. The package's FFmpeg version trailed behind the latest release (7.1), limiting access to newer codecs.

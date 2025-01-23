@@ -86,7 +86,6 @@ export default function ActionPane(): JSX.Element {
             <Button
               onClick={() => {
                 setExplorer([])
-                setOutputDir('')
               }}
               className="bg-red-600 transition-colors duration-500 text-white text-lg font-bold px-5 py-4 rounded"
             >
