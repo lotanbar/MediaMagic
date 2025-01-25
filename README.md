@@ -15,17 +15,15 @@ A desktop application for efficient media file conversion, supporting various fo
   <img src="./assets/new_output.gif" alt="Description of GIF" />
 </div>
 
-## Status
+## Important Notes:
 
-⚠️ Currently available in development mode only due to ongoing integration issues with FFmpeg binaries in the production build.
-⚠️ A white screen might sometimes be opened with the main app for no reason. Since the issue is not consistent I was unable to solve it.
+⚠️ Since the app requires FFmpeg to be installed, and due to my inability to create an AIO installer for the final build. A script is provided in this repo. Otherwise, u could follow the manual quick start instructions.
 
-## Platform Support
+⚠️ The app could randomly open a second instance. Unfortunately I was unable to reproduce this bug since and was unable to solve it.
 
-- ✅ Windows: Fully tested and supported
-- ⚡ Linux/MacOS: Not yet tested
+⚠️ The app was developed using Windows 10, Although there isn't particular reason is shouldn't, the app might not work in other OS.
 
-## Prerequisites
+## Manual quick start:
 
 1. FFmpeg installation required:
 
@@ -35,21 +33,21 @@ A desktop application for efficient media file conversion, supporting various fo
   ```
 - Or download directly from [FFmpeg official website](https://ffmpeg.org/download.html)
 
-## Development Setup
 
-1. Clone the repository:
+2. Clone the repository and navigate:
 
 ```bash
 git clone https://github.com/allhailalona/MediaMagic.git
+cd mediamagic
 ```
 
-2. Install dependencies
+3. Install dependencies
 
 ```bash
 npm install
 ```
 
-3. Run in Devlopment mode
+4. Run in Devlopment mode
 
 ```bash
 npm run dev
@@ -61,22 +59,23 @@ Or in Preview mode
 npm start
 ```
 
-## **FFmpeg Binaries Path Resolution Issue**
-
-## FFmpeg Integration Approaches
+## My various takes at integrating ffmpeg into the electron build to create an AIO installer:
 
 ### Initial Manual Approach
+
 Attempted direct FFmpeg binary integration through electron-builder configuration:
 
 ```json
 {
   "build": {
     "files": ["out/**/*", "resources/**/*"],
-    "extraResources": [{
-      "from": "./resources/bin/",
-      "to": "bin/",
-      "filter": ["**/*"]
-    }]
+    "extraResources": [
+      {
+        "from": "./resources/bin/",
+        "to": "bin/",
+        "filter": ["**/*"]
+      }
+    ]
   }
 }
 ```
@@ -85,7 +84,7 @@ Path resolution was handled in the main process:
 
 ```typescript
 const getFFmpegPath = () => {
-  return app.isPackaged 
+  return app.isPackaged
     ? path.join(process.resourcesPath, 'bin', 'ffmpeg.exe')
     : path.join(app.getAppPath(), 'resources', 'bin', 'ffmpeg.exe')
 }
@@ -94,6 +93,7 @@ const getFFmpegPath = () => {
 Unfortunately that did not work, the built app couldn't perform any ffmpeg ops
 
 ### NPM Package Approach
+
 Attempted using `@ffmpeg-installer/ffmpeg` and `@ffprobe-installer/ffprobe`:
 
 ```typescript

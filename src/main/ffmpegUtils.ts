@@ -1,16 +1,10 @@
+/* eslint-disable prettier/prettier */
 import path from 'path'
 import ffmpeg from 'fluent-ffmpeg'
 import fs from 'fs/promises'
 import { DirItem } from '../types'
-import { app } from 'electron'
 import { sendToRenderer, logToRenderer } from './index'
 import { handleStopAllFFMPEGProcesses } from './ipc'
-
-// For security, and mainly bugproofing purposes - the front will not be tracking the total and seperate progress of each converting file
-// This would happen in the back, in this file.
-// An event call would be sent to the front when the 'end' event is called by ffmpeg, which will change the UI ONLY
-// The total conversion progress will be counted here as well, each 'end' event would increment the alreadyConverted let and init a func that checks if it equals the total
-// If it is, the CONVERSION_COMPLETE event would call the front.
 
 let totalToConvert: number = 0
 let alreadyConverted: number = 0
@@ -65,34 +59,19 @@ export const convertExplorer = async (explorer: DirItem[], outputDir: string): P
 }
 
 const convertAudio = async (inputPath: string, outputPath: string): Promise<void> => {
-  let progressTracker: number = 0
-
   return new Promise((resolve, reject) => {
     ffmpeg(inputPath)
-      .audioCodec('libopus')
-      .audioBitrate('64k')
-      .audioChannels(1)
-      .outputOptions([
-        '-ar 24000',
-        '-vbr on',
-        '-compression_level 8',
-        '-frame_duration 60',
-        '-packet_loss 3',
-        '-mapping_family 1',
-        '-threads 2'
-      ])
-      .output(outputPath.replace(/\.[^/.]+$/, '.opus'))
+      .audioCodec('libmp3lame')
+      .audioBitrate('128k')
+      .audioFrequency(44100)
+      .outputOptions(['-threads 4', '-q:a 0'])
+      .output(outputPath.replace(/\.[^/.]+$/, '.mp3'))
       .on('start', () => {
         console.log(`[AUDIO] Starting: ${path.basename(inputPath)}`)
         logToRenderer(`[AUDIO] Starting: ${path.basename(inputPath)}`)
       })
       .on('progress', (progress) => {
-        if (progress.percent > progressTracker + 20) {
-          // Audio conversion is fast so 20 is high enough to keep the console clean
-          progressTracker = progress.percent
-          console.log(`[AUDIO] ${path.basename(inputPath)}: ${Math.round(progress.percent)}%`)
-          logToRenderer(`[AUDIO] ${path.basename(inputPath)}: ${Math.round(progress.percent)}%`)
-        }
+        console.log(`[AUDIO] ${path.basename(inputPath)}: ${Math.round(progress.percent)}%`)
         sendToRenderer('LIVE_PROGRESS', inputPath, progress.percent)
       })
       .on('error', async (err) => {
@@ -113,120 +92,100 @@ const convertAudio = async (inputPath: string, outputPath: string): Promise<void
 }
 
 const convertVideo = async (inputPath: string, outputPath: string): Promise<void> => {
-  let progressTracker: number = 0
+    return new Promise((resolve, reject) => {
+      const commonOptions = [
+        '-c:v', 'libaom-av1',        // Video codec: AV1
+        '-c:a', 'libmp3lame',        // Audio codec: MP3  
+        '-b:a', '128k',              // Audio bitrate
+        '-ar', '44100',              // Audio sample rate
+        '-q:a', '0',                 // Audio quality (highest)
+        '-crf', '22',                // Video quality (22 = high quality, lower = better)
+        '-b:v', '0',                 // Variable bitrate
+        '-cpu-used', '4',            // Encoding speed (0=slowest/best, 8=fastest/worst)
+        '-row-mt', '1',              // Row-based multithreading (boolean)
+        '-tile-columns', '2',        // Split into 4 columns (was 16) - better compression, similar speed
+        '-tile-rows', '2',           // Split into 4 rows (was 16) - better compression, similar speed
+        '-threads', '4',             // Number of CPU threads
+        '-movflags', '+faststart',   // Moves metadata to start of file - no impact on compression
+        '-vf', 'scale=\'min(1920,iw):-2:flags=lanczos\''  // Scale video, maintain ratio, max 1920px wide
+      ];
+      
+      ffmpeg(inputPath)
+        .outputOptions([...commonOptions, '-pass', '1', '-f', 'null'])
+        .output('/dev/null')
+        .on('start', () => {
+          console.log(`[VIDEO] Starting: ${path.basename(inputPath)}`);
+          logToRenderer(`[VIDEO] Starting: ${path.basename(inputPath)}`);
+        })
+        .on('error', async (err) => {
+          await handleStopAllFFMPEGProcesses();
+          resetConversionCount();
+          sendToRenderer('CONVERSION_ERROR', inputPath, err.message);
+          reject(err);
+        })
+        .on('end', () => {
+          console.log('[VIDEO] First pass completed');
 
-  return new Promise((resolve, reject) => {
-    const commonOptions = [
-      '-c:v libaom-av1', // Video codec - AV1 encoder
-      '-crf 22', // Constant Rate Factor - controls quality (lower = better)
-      '-b:v 0', // Sets variable bitrate (VBR) mode by specifying 0 for the video bitrate. This lets the CRF value control quality instead of targeting a specific bitrate.
-      '-cpu-used 4', // Encoding speed (0-8, higher = faster but lower quality)
-      '-row-mt 1', // Enable row-based multithreading
-      '-tile-columns 2', // Number of tile columns for parallelization
-      '-tile-rows 2', // Number of tile rows for parallelization
-      '-threads 4', // Number of threads to use for encoding
-      '-aq-mode 2', // How the encoder distributes bits across different parts of each frame. AQ mode 2 is particularly sophisticated
-      '-g 240', // Keyframe interval (in frames)
-      '-vf scale=1920:1080:flags=lanczos' // Scale video to 1080p using Lanczos algorithm - Most advanced algorithm
-    ]
+          ffmpeg(inputPath)
+            .outputOptions([...commonOptions, '-pass', '2'])
+            .on('start', () => {
+            })
+            .on('progress', (progress) => {
+              console.log(`[VIDEO] ${path.basename(inputPath)}: ${Math.round(progress.percent)}%`);
+              sendToRenderer('LIVE_PROGRESS', inputPath, progress.percent);
+            })
+            .on('error', async (err) => {
+              await handleStopAllFFMPEGProcesses();
+              resetConversionCount();
+              sendToRenderer('CONVERSION_ERROR', inputPath, err.message);
+              reject(err);
+            })
+            .on('end', () => {
+              alreadyConverted++;
+              isConversionComplete();
+              sendToRenderer('LIVE_PROGRESS', inputPath, 100);
+              resolve();
+            })
+            .save(outputPath.replace(/\.[^/.]+$/, '.mp4'));
+        })
+        .run();
+    });
+  }
 
-    ffmpeg(inputPath)
-      .videoCodec('libaom-av1')
-      .outputOptions([...commonOptions, '-pass 1', '-f null'])
-      .output('/dev/null')
-      .on('start', () => {
-        console.log(`[VIDEO] Starting: ${path.basename(inputPath)}`)
-        logToRenderer(`[VIDEO] Starting: ${path.basename(inputPath)}`) // The starting log should be in the first pass so the user knows when the processing actually starts
-      })
-      .on('error', async (err) => {
-        await handleStopAllFFMPEGProcesses()
-        resetConversionCount() // To make sure the values don't persist into next conversion
-        sendToRenderer('CONVERSION_ERROR', inputPath, err.message)
-        reject(err)
-      })
-      .on('end', () => {
-        console.log('[VIDEO] First pass completed')
-        // This is the first pass there is no need to increment alreadyConverted here - that's before the errors
-
-        ffmpeg(inputPath)
-          .videoCodec('libaom-av1')
-          .outputOptions([...commonOptions, '-pass 2'])
-          .on('progress', (progress) => {
-            if (progress.percent > progressTracker + 5) {
-              // Video conversion is slower so I'd want more frequent updates
-              progressTracker = progress.percent
-              console.log(`[VIDEO] ${path.basename(inputPath)}: ${Math.round(progress.percent)}%`)
-              logToRenderer(`[VIDEO] ${path.basename(inputPath)}: ${Math.round(progress.percent)}%`)
-            }
-            sendToRenderer('LIVE_PROGRESS', inputPath, progress.percent)
-          })
-          .on('error', async (err) => {
-            await handleStopAllFFMPEGProcesses()
-            resetConversionCount() // To make sure the values don't persist into next conversion
-            sendToRenderer('CONVERSION_ERROR', inputPath, err.message)
-            reject(err)
-          })
-          .on('end', () => {
-            alreadyConverted++ // One more file was successfully converted
-            isConversionComplete() // Check if they are finally equal
-            sendToRenderer('LIVE_PROGRESS', inputPath, 100)
-            resolve()
-          })
-          .save(outputPath)
-      })
-      .run()
-  })
-}
-
-const convertImage = async (inputPath: string, outputPath: string): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    const commonOptions = [
-      '-c:v',
-      'libaom-av1', // AV1 codec for any potential encoding tasks
-      '-crf',
-      '22', // Quality setting for compression
-      '-cpu-used',
-      '4', // Speed/efficiency tradeoff
-      '-vf',
-      'scale=1920:1080:flags=lanczos', // Resize image using Lanczos scaling
-      '-f',
-      'avif'
-    ]
-
-    ffmpeg(inputPath)
-      .outputOptions(commonOptions)
-      .on('start', () => {
-        console.log(`[IMAGE] Starting: ${path.basename(inputPath)}`)
-        logToRenderer(`[IMAGE] Starting: ${path.basename(inputPath)}`)
-      })
-      .on('error', async (err) => {
-        await handleStopAllFFMPEGProcesses()
-        resetConversionCount()
-        sendToRenderer('CONVERSION_ERROR', inputPath, err.message)
-        reject(err)
-      })
-      .on('end', () => {
-        sendToRenderer('LIVE_PROGRESS', inputPath, 100)
-        alreadyConverted++
-        isConversionComplete()
-        resolve()
-      })
-      .save(outputPath)
-  })
-}
-
-export const getFFmpegPath = (): string => {
-  const ffmpegPath = app.isPackaged
-    ? path.join(process.resourcesPath, 'bin', 'ffmpeg.exe')
-    : path.join(app.getAppPath(), 'resources', 'bin', 'ffmpeg.exe')
-
-  return ffmpegPath
-}
-
-export const getFFprobePath = (): string => {
-  const ffprobePath = app.isPackaged
-    ? path.join(process.resourcesPath, 'bin', 'ffprobe.exe')
-    : path.join(app.getAppPath(), 'resources', 'bin', 'ffprobe.exe')
-
-  return ffprobePath
-}
+  const convertImage = async (inputPath: string, outputPath: string): Promise<void> => {
+    const avifOutputPath = outputPath.replace(/\.[^/.]+$/, '.avif');
+    
+    return new Promise((resolve, reject) => {
+      const commonOptions = [
+        '-c:v', 'libaom-av1',        // Video codec: AV1 for AVIF
+        '-crf', '22',                // Quality level (22 = high quality)
+        '-cpu-used', '4',            // Encoding speed (2 = good balance)
+        '-row-mt', '1',              // Row-based multithreading (boolean)
+        '-tile-columns', '2',        // Split into 4 columns (was 16) - better compression
+        '-tile-rows', '2',           // Split into 4 rows (was 16) - better compression
+        '-threads', '4',             // CPU thread count
+        '-vf', 'scale=\'min(1920,iw):-2:flags=lanczos\'',  // Scale image, maintain ratio
+        '-f', 'avif'                 // Output format
+       ];
+          
+      ffmpeg(inputPath)
+        .outputOptions(commonOptions)
+        .on('start', () => {
+          console.log(`[IMAGE] Starting: ${path.basename(inputPath)}`);
+          logToRenderer(`[IMAGE] Starting: ${path.basename(inputPath)}`);
+        })
+        .on('error', async (err) => {
+          await handleStopAllFFMPEGProcesses();
+          resetConversionCount();
+          sendToRenderer('CONVERSION_ERROR', inputPath, err.message);
+          reject(err);
+        })
+        .on('end', () => {
+          sendToRenderer('LIVE_PROGRESS', inputPath, 100);
+          alreadyConverted++;
+          isConversionComplete();
+          resolve();
+        })
+        .save(avifOutputPath);
+    });
+  }
