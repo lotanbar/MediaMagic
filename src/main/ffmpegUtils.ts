@@ -3,68 +3,121 @@ import path from 'path'
 import ffmpeg from 'fluent-ffmpeg'
 import fs from 'fs/promises'
 import os from 'os'
-import { DirItem } from '../types'
+import { DirItem, ConversionQueue } from '../types'
 import { sendToRenderer, logToRenderer } from './index'
 import { handleStopAllFFMPEGProcesses } from './ipc'
 
 const calculateThreads = (): number => {
   const totalThreads = os.cpus().length
-  return Math.floor(totalThreads * 0.2)
+  return Math.floor(totalThreads * 0.4) // 6 threads to each worker total 12 threads 4 left for other activities
 }
+
+let activeConversions = 0;
+const MAX_CONCURRENT = 2; 
+const conversionQueue: ConversionQueue[]  = [];
 
 let totalToConvert: number = 0
 let alreadyConverted: number = 0
 let parentOutputDir: string
 
 const resetConversionCount = (): void => {
-  console.log('resetting converesion counts')
   totalToConvert = 0
   alreadyConverted = 0
 }
 
 const isConversionComplete = (): void => {
-  console.log('check if conversion complete')
   if (alreadyConverted === totalToConvert) {
-    console.log('conversion is complete calling front')
+    console.log('Conversion is complete')
     sendToRenderer('CONVERSION_COMPLETE')
     resetConversionCount()
   }
 }
 
 export const convertExplorer = async (explorer: DirItem[], outputDir: string): Promise<void> => {
-  parentOutputDir = outputDir 
-  await fs.mkdir(outputDir, { recursive: true }) // Create the parent 'converted' folder in the output path the user chose
-
-  await Promise.allSettled(
-    explorer.map(async (dir: DirItem) => {
+  parentOutputDir = outputDir;
+  await fs.mkdir(outputDir, { recursive: true });
+  
+  // First pass: build queue without starting conversions
+  const buildQueue = async (items: DirItem[], currentDir: string): Promise<void> => {
+    for (const dir of items) {
       if (dir.type === 'folder') {
-        const childOutputDir = path.join(outputDir, dir.name) // Create the child folder name
-        await fs.mkdir(childOutputDir, { recursive: true }) // Create the new folder in the correct location
+        const childDir = path.join(currentDir, dir.name);
+        await fs.mkdir(childDir, { recursive: true });
         if (dir.children) {
-          // Not all folders have children
-          // Convert the children as well and create the subfolders if necessary - the nested processing occurs here
-          await convertExplorer(dir.children, childOutputDir)
+          await buildQueue(dir.children, childDir);
         }
       } else {
-        // Convert the actual files and output to the correct folder
-        totalToConvert++
-        console.log('total is', totalToConvert)
-        const fileOutputDir = path.join(outputDir, dir.name)
-        switch (dir.ext) {
-          case 'audio':
-            await convertAudio(dir.path, fileOutputDir)
-            break
-          case 'video':
-            await convertVideo(dir.path, fileOutputDir)
-            break
-          case 'image':
-            await convertImage(dir.path, fileOutputDir)
-            break
-        }
+        totalToConvert++;
+        const fileOutputDir = path.join(currentDir, dir.name);
+        // Add to queue instead of converting immediately
+        conversionQueue.push({
+          type: dir.ext,
+          inputPath: dir.path,
+          outputPath: fileOutputDir
+        });
       }
-    })
-  )
-}
+    }
+  };
+  
+  await buildQueue(explorer, outputDir);
+  
+  // Start processing with controlled concurrency
+  for (let i = 0; i < MAX_CONCURRENT; i++) { // Run loop only set amount of times to assure a constant amount of workers
+    processNextInQueue();
+  }
+};
+
+// New function to process queue items
+const processNextInQueue = async (): Promise<void> => {
+  // STEP 1: Check if queue is empty
+  if (conversionQueue.length === 0) {
+    // No more items to process
+    if (activeConversions === 0) {
+      // Everything is done, notify completion
+      isConversionComplete();
+    }
+    return;
+  }
+  
+  // STEP 2: Check if we're at capacity
+  if (activeConversions >= MAX_CONCURRENT) {
+    // Already at maximum concurrent conversions
+    return;
+  }
+  
+  // STEP 3: Get next file and start processing
+  const item = conversionQueue.shift();
+  // Add this check to handle undefined
+  if (!item) {
+    return;
+  }
+
+  activeConversions++;
+  
+  try {
+    // STEP 4: Convert the file
+    switch (item.type) {
+      case 'audio':
+        await convertAudio(item.inputPath, item.outputPath);
+        break;
+      case 'video':
+        await convertVideo(item.inputPath, item.outputPath);
+        break;
+      case 'image':
+        await convertImage(item.inputPath, item.outputPath);
+        break;
+    }
+  } catch (err) {
+    // There is no reject for conversion functions since errors are handled by ffmpeg
+  } finally {
+    // STEP 5: Update counters
+    activeConversions--;
+    alreadyConverted++;
+    
+    // STEP 6: Process next item
+    processNextInQueue();
+  }
+};
 
 const convertAudio = async (inputPath: string, outputPath: string): Promise<void> => {
   return new Promise((resolve, reject) => {
@@ -92,7 +145,6 @@ const convertAudio = async (inputPath: string, outputPath: string): Promise<void
       })
       .on('end', () => {
         sendToRenderer('LIVE_PROGRESS', inputPath, 100) // As mentioned above, this is only to update UI and NOT to track total progress
-        alreadyConverted++ // One more file was successfully converted
         isConversionComplete() // Check if they are finally equal
         resolve()
       })
@@ -173,7 +225,6 @@ const convertVideo = async (inputPath: string, outputPath: string): Promise<void
             reject(err)
           })
           .on('end', () => {
-            alreadyConverted++
             isConversionComplete()
             sendToRenderer('LIVE_PROGRESS', inputPath, 100)
             resolve()
@@ -242,7 +293,6 @@ const convertImage = async (inputPath: string, outputPath: string): Promise<void
           })
           .on('end', () => {
             sendToRenderer('LIVE_PROGRESS', inputPath, 100)
-            alreadyConverted++
             isConversionComplete()
             resolve()
           })

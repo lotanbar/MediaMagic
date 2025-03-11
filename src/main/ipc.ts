@@ -193,7 +193,7 @@ export const handleStopAllFFMPEGProcesses = async (
   if (actualOutputDir) {
     try {
       // Use a try-catch block instead of callbacks
-      await fs.promises.rm(actualOutputDir, { recursive: true });
+      await fs.promises.rm(actualOutputDir, { recursive: true })
     } catch (err) {
       // Silently handle directory removal errors
     }

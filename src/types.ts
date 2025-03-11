@@ -22,3 +22,9 @@ export type ExplorerContextType = {
 }
 
 export type ext = 'video' | 'audio' | 'image' | null | undefined
+
+export type ConversionQueue = {
+  type: ext
+  inputPath: string
+  outputPath: string
+}
