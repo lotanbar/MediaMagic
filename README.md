@@ -33,7 +33,6 @@ A desktop application for efficient media file conversion, supporting various fo
   ```
 - Or download directly from [FFmpeg official website](https://ffmpeg.org/download.html)
 
-
 2. Clone the repository and navigate:
 
 ```bash

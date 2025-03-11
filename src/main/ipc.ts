@@ -1,16 +1,15 @@
 import { ipcMain, IpcMainInvokeEvent, dialog } from 'electron'
-import { ExecException } from 'child_process'
 import { lstat, readdir } from 'fs/promises'
 import path, { parse, join } from 'path'
 import bytes from 'bytes'
 import { getFolderSize } from 'go-get-folder-size'
 import { DirItem } from '../types'
 import { exec } from 'child_process'
-import { promisify } from 'util'
 import { isValidExt, getDuration } from './fileUtils'
 import { convertExplorer } from './ffmpegUtils'
+import { sendToRenderer } from './index'
+import fs from 'fs'
 
-const execAsync = promisify(exec)
 let isIpcInitialized = false
 
 export default function ipc(): void {
@@ -35,7 +34,7 @@ export default function ipc(): void {
   ipcMain.handle('GET_DETAILS', handleGetDetails)
   ipcMain.handle('SELECT_OUTPUT_DIR', handleSelectOutputDir)
   ipcMain.handle('CONVERT_EXPLORER', handleConvertExplorer)
-  ipcMain.handle('STOP_ALL_FFMPEG_PROCESSES', handleStopAllFFMPEGProcesses)
+  ipcMain.handle('STOP_ALL_FFMPEG_PROCESSES', handleStopAllFFMPEGProcesses) // Pass here the parentOutputDir if u wish to remove it after clicking STOP
 
   isIpcInitialized = true
   console.log('IPC handlers initialized successfully')
@@ -163,25 +162,44 @@ const handleSelectOutputDir = async (_e: IpcMainInvokeEvent): Promise<string> =>
   return res.filePaths[0]
 }
 
-export const handleStopAllFFMPEGProcesses = async (): Promise<string> => {
-  console.log('Stopping all FFmpeg processes')
-  const command = process.platform === 'win32' ? 'taskkill /F /IM ffmpeg.exe' : 'pkill -9 ffmpeg'
+export const handleStopAllFFMPEGProcesses = async (
+  _eOrOutputDir?: IpcMainInvokeEvent | string,
+  outputDir?: string
+): Promise<void> => {
+  // Determine which parameter is which
+  let actualOutputDir: string | undefined
 
-  try {
-    const { stdout, stderr } = await execAsync(command)
-
-    if (stderr && !stderr.includes('not found')) {
-      console.error('Error output:', stderr)
-      throw new Error(stderr)
-    }
-
-    return stdout || 'No FFmpeg processes were running'
-  } catch (error) {
-    const execError = error as ExecException
-    if (execError.message.includes('not found')) {
-      return 'No FFmpeg processes were running'
-    }
-    console.error('Error stopping FFmpeg processes:', execError)
-    throw execError
+  if (typeof _eOrOutputDir === 'string') {
+    // Called directly with just the output directory
+    actualOutputDir = _eOrOutputDir
+  } else {
+    // Called through IPC with event and maybe output dir
+    actualOutputDir = outputDir
   }
+
+  console.log('Stopping all FFmpeg processes please hold....')
+  // Kill FFMPEG processes first
+  try {
+    const killCmd = process.platform === 'win32' ? 'taskkill /F /IM ffmpeg.exe' : 'pkill -f ffmpeg'
+
+    await new Promise<void>((resolve) => {
+      exec(killCmd, () => resolve())
+    })
+  } catch (err) {
+    // Silently handle process termination errors
+  }
+
+  // Remove output directory if provided
+  if (actualOutputDir) {
+    try {
+      // Use a try-catch block instead of callbacks
+      await fs.promises.rm(actualOutputDir, { recursive: true });
+    } catch (err) {
+      // Silently handle directory removal errors
+    }
+  }
+
+  // Always send notification regardless of errors
+  sendToRenderer('CONVERSION_STOPPED')
+  return Promise.resolve()
 }

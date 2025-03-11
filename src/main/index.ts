@@ -20,12 +20,9 @@ export const sendToRenderer = (channel: string, ...args): void => {
 }
 
 export const logToRenderer = (message: string): void => {
-  console.log('trying to console to renderer')
   if (mainWindow && !mainWindow.isDestroyed()) {
     try {
-      console.log('window exists running command')
       mainWindow.webContents.executeJavaScript(`console.log("${message}")`)
-      console.log('after running')
     } catch (error) {
       console.error('Error logging to renderer:', error)
     }
@@ -99,7 +96,7 @@ app
     // Clean up FFmpeg processes before quit
     app.on('before-quit', async () => {
       try {
-        await handleStopAllFFMPEGProcesses()
+        await handleStopAllFFMPEGProcesses(undefined)
       } catch (error) {
         if (error instanceof Error && !error.message.includes('not found')) {
           console.error('Error stopping FFmpeg processes:', error)

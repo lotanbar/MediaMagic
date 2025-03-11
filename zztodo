@@ -18,7 +18,7 @@ Important measurements:
   3 seconds video: 
     preset 4 30 seconds 20.3mb to 646kb with lanczos
     preset 4 1 minute 20.3mb to 1.76mb without lanczos
-    preset 6 15 seconds 20.3mb to 763kb
+    preset 6 15 seconds 20.3mb to 763kb with lanczos
     x2 more time and 1.2 less size
 
   Note that these are relative not absolute values, I think 4 is a good fit for now. 
