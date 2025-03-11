@@ -21,13 +21,14 @@ export const sendToRenderer = (channel: string, ...args): void => {
 
 export const logToRenderer = (message: string): void => {
   if (mainWindow && !mainWindow.isDestroyed()) {
+    console.log('Window exists')
     try {
       mainWindow.webContents.executeJavaScript(`console.log("${message}")`)
     } catch (error) {
       console.error('Error logging to renderer:', error)
     }
   } else {
-    console.error('window does NOT exist')
+    console.error('Window does NOT exist')
   }
 }
 

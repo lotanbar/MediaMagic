@@ -1,1 +1,2 @@
-prevent upscaling artifacts by adding adaptive resolution scaling to AV1 encoder
+remove grains
+fix issue with NaN at progress - for further details see todo.md

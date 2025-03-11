@@ -12,26 +12,10 @@ const calculateThreads = (): number => {
   return Math.floor(totalThreads * 0.4) // 6 threads to each worker total 12 threads 4 left for other activities
 }
 
+let parentOutputDir: string
 let activeConversions = 0;
 const MAX_CONCURRENT = 2; 
 const conversionQueue: ConversionQueue[]  = [];
-
-let totalToConvert: number = 0
-let alreadyConverted: number = 0
-let parentOutputDir: string
-
-const resetConversionCount = (): void => {
-  totalToConvert = 0
-  alreadyConverted = 0
-}
-
-const isConversionComplete = (): void => {
-  if (alreadyConverted === totalToConvert) {
-    console.log('Conversion is complete')
-    sendToRenderer('CONVERSION_COMPLETE')
-    resetConversionCount()
-  }
-}
 
 export const convertExplorer = async (explorer: DirItem[], outputDir: string): Promise<void> => {
   parentOutputDir = outputDir;
@@ -47,7 +31,6 @@ export const convertExplorer = async (explorer: DirItem[], outputDir: string): P
           await buildQueue(dir.children, childDir);
         }
       } else {
-        totalToConvert++;
         const fileOutputDir = path.join(currentDir, dir.name);
         // Add to queue instead of converting immediately
         conversionQueue.push({
@@ -74,12 +57,13 @@ const processNextInQueue = async (): Promise<void> => {
     // No more items to process
     if (activeConversions === 0) {
       // Everything is done, notify completion
-      isConversionComplete();
+      console.log('Conversion is complete!')
+      sendToRenderer('CONVERSION_COMPLETE')
     }
     return;
   }
   
-  // STEP 2: Check if we're at capacity
+  // STEP 2: Check if we're at capacity - for end cases
   if (activeConversions >= MAX_CONCURRENT) {
     // Already at maximum concurrent conversions
     return;
@@ -112,7 +96,6 @@ const processNextInQueue = async (): Promise<void> => {
   } finally {
     // STEP 5: Update counters
     activeConversions--;
-    alreadyConverted++;
     
     // STEP 6: Process next item
     processNextInQueue();
@@ -133,19 +116,21 @@ const convertAudio = async (inputPath: string, outputPath: string): Promise<void
         logToRenderer(`[AUDIO] Starting: ${path.basename(inputPath)}`)
       })
       .on('progress', (progress) => {
-        console.log(`[AUDIO] ${path.basename(inputPath)}: ${Math.round(progress.percent)}%`)
-        sendToRenderer('LIVE_PROGRESS', inputPath, progress.percent)
+        if (typeof progress.percent === "number" && !isNaN(progress.percent)) {
+          logToRenderer(`[AUDIO] ${path.basename(inputPath)}: ${progress.percent}%`)
+          sendToRenderer('LIVE_PROGRESS', inputPath, progress.percent)
+        } else {
+          console.log('progress percent is not a number')
+        }
       })
       .on('error', async (err) => {
         console.error('error occured', err)
         await handleStopAllFFMPEGProcesses(parentOutputDir)
-        resetConversionCount() // To make sure the values don't persist into next conversion
         sendToRenderer('CONVERSION_ERROR', inputPath, err.message)
         reject(err)
       })
       .on('end', () => {
         sendToRenderer('LIVE_PROGRESS', inputPath, 100) // As mentioned above, this is only to update UI and NOT to track total progress
-        isConversionComplete() // Check if they are finally equal
         resolve()
       })
       .run()
@@ -155,7 +140,7 @@ const convertAudio = async (inputPath: string, outputPath: string): Promise<void
 const convertVideo = async (inputPath: string, outputPath: string): Promise<void> => {
   return new Promise((resolve, reject) => {
     // SVT-AV1 specific parameters
-    const svtParams = ['tune=0', 'film-grain=15', 'enable-overlays=1', 'enable-qm=1'].join(':')
+    const svtParams = ['tune=0', 'enable-overlays=1', 'enable-qm=1'].join(':')
 
     const commonOptions = [
       // Video codec and settings
@@ -166,7 +151,7 @@ const convertVideo = async (inputPath: string, outputPath: string): Promise<void
       '-b:v',
       '0',
       '-preset',
-      '2',
+      '4',
       '-pix_fmt',
       'yuv420p10le',
       '-svtav1-params',
@@ -201,13 +186,12 @@ const convertVideo = async (inputPath: string, outputPath: string): Promise<void
       })
       .on('error', async (err) => {
         await handleStopAllFFMPEGProcesses(parentOutputDir)
-        resetConversionCount()
         sendToRenderer('CONVERSION_ERROR', inputPath, err.message)
         reject(err)
       })
-      .on('stderr', (stderrLine) => {
-        console.log(`[VIDEO-STDERR] ${stderrLine}`)
-      })
+      // .on('stderr', (stderrLine) => {
+      //   console.log(`[VIDEO-STDERR] ${stderrLine}`)
+      // })
       .on('end', () => {
         console.log('[VIDEO] First pass completed')
 
@@ -215,17 +199,19 @@ const convertVideo = async (inputPath: string, outputPath: string): Promise<void
           .outputOptions([...commonOptions, '-pass', '2'])
           .on('start', () => {})
           .on('progress', (progress) => {
-            console.log(`[VIDEO] ${path.basename(inputPath)}: ${Math.round(progress.percent)}%`)
-            sendToRenderer('LIVE_PROGRESS', inputPath, progress.percent)
+            if (typeof progress.percent === "number" && !isNaN(progress.percent)) {
+              logToRenderer(`[VIDEO] ${path.basename(inputPath)}: ${progress.percent}%`)
+              sendToRenderer('LIVE_PROGRESS', inputPath, progress.percent)
+            } else {
+              console.log('progress percent is not a number')
+            }
           })
           .on('error', async (err) => {
             await handleStopAllFFMPEGProcesses(parentOutputDir)
-            resetConversionCount()
             sendToRenderer('CONVERSION_ERROR', inputPath, err.message)
             reject(err)
           })
           .on('end', () => {
-            isConversionComplete()
             sendToRenderer('LIVE_PROGRESS', inputPath, 100)
             resolve()
           })
@@ -239,9 +225,6 @@ const convertImage = async (inputPath: string, outputPath: string): Promise<void
   const avifOutputPath = outputPath.replace(/\.[^/.]+$/, '.avif')
 
   return new Promise((resolve, reject) => {
-    // SVT-AV1 specific parameters
-    const svtParams = ['film-grain=15'].join(':')
-
     const commonOptions = [
       // Video codec and settings
       '-c:v',
@@ -249,11 +232,9 @@ const convertImage = async (inputPath: string, outputPath: string): Promise<void
       '-crf',
       '22',
       '-preset',
-      '2',
+      '4',
       '-pix_fmt',
       'yuv420p10le',
-      '-svtav1-params',
-      svtParams,
 
       // Other settings
       '-threads',
@@ -271,12 +252,11 @@ const convertImage = async (inputPath: string, outputPath: string): Promise<void
         console.log(`[IMAGE] Starting: ${path.basename(inputPath)}`)
         logToRenderer(`[IMAGE] Starting: ${path.basename(inputPath)}`)
       })
-      .on('stderr', (stderrLine) => {
-        console.log(`[IMAGE-STDERR] ${stderrLine}`)
-      })
+      // .on('stderr', (stderrLine) => {
+      //   console.log(`[IMAGE-STDERR] ${stderrLine}`)
+      // })
       .on('error', async (err) => {
         await handleStopAllFFMPEGProcesses(parentOutputDir)
-        resetConversionCount()
         sendToRenderer('CONVERSION_ERROR', inputPath, err.message)
         reject(err)
       })
@@ -287,13 +267,11 @@ const convertImage = async (inputPath: string, outputPath: string): Promise<void
           .outputOptions([...commonOptions, '-pass', '2'])
           .on('error', async (err) => {
             await handleStopAllFFMPEGProcesses(parentOutputDir)
-            resetConversionCount()
             sendToRenderer('CONVERSION_ERROR', inputPath, err.message)
             reject(err)
           })
           .on('end', () => {
             sendToRenderer('LIVE_PROGRESS', inputPath, 100)
-            isConversionComplete()
             resolve()
           })
           .save(avifOutputPath)

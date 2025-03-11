@@ -2,6 +2,10 @@ Optional:
   - restructuring the front comps as well for better readability is advisable. 
   - hide error if it came from clicking the stop button
   - testing
+  - Allocate all threads to last item! That's basically adding a conditional to the process soemthing?
+  - as of now I use conditional to overcoe the unreliability of progress.percent - it means though that sgaps are possible in the progress bar in front
+    this can be perhaps solved by investigating the progress object further or providing an estimtaete and updating in intervals
+  - Properly explain each conversion param and perform extensive size/quality comparison tests
 
 Oddities:
   - Two app instances are opened - This one is hard to debug since I'm not sure how to reproduce it and it happens pretty randomly
