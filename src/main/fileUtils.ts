@@ -15,7 +15,7 @@ export const isValidExt = (filePath: string): ext => {
   const validExt = {
     video: ['mp4', 'mkv', 'mov', 'avi', 'webm'],
     audio: ['mp3', 'wav', 'flac', 'ogg', 'opus'],
-    image: ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'tif', 'tiff']
+    image: ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'tif', 'tiff', 'avif']
   } as const
 
   // Now check if the extension is valid:

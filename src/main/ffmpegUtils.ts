@@ -7,20 +7,22 @@ import { DirItem, ConversionQueue } from '../types'
 import { sendToRenderer, logToRenderer } from './index'
 import { handleStopAllFFMPEGProcesses } from './ipc'
 
+// Maximum thread utilization
 const calculateThreads = (mediaType: 'audio' | 'video' | 'image'): number => {
   const totalThreads = os.cpus().length;
   
   switch(mediaType) {
     case 'audio':
-      return Math.max(2, Math.floor(totalThreads * 0.35)); // Up from 0.25
+      return Math.max(2, Math.floor(totalThreads * 0.4));  // 6-7 threads on 16-core
     case 'video':
-      return Math.max(3, Math.floor(totalThreads * 0.75)); // Up from 0.6
+      return Math.max(3, Math.floor(totalThreads * 0.9));  // 14-15 threads on 16-core
     case 'image':
-      return Math.max(2, Math.floor(totalThreads * 0.5));  // Up from 0.4
+      return Math.max(2, Math.floor(totalThreads * 0.7));  // 11-12 threads on 16-core
   }
 }
 
-const MAX_CONCURRENT = Math.max(2, Math.min(8, Math.floor(os.cpus().length / 2.5)));
+// More concurrent processes
+const MAX_CONCURRENT = Math.max(2, Math.min(10, Math.floor(os.cpus().length / 2)));
 let parentOutputDir: string
 let activeConversions = 0;
 const conversionQueue: ConversionQueue[] = []
