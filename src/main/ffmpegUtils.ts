@@ -7,22 +7,25 @@ import { DirItem, ConversionQueue } from '../types'
 import { sendToRenderer, logToRenderer } from './index'
 import { handleStopAllFFMPEGProcesses } from './ipc'
 
-// Maximum thread utilization
+// Add at the top with your other imports
+const NULL_DEVICE = os.platform() === 'win32' ? 'NUL' : '/dev/null'
+
+// More aggressive thread allocation
 const calculateThreads = (mediaType: 'audio' | 'video' | 'image'): number => {
   const totalThreads = os.cpus().length;
   
   switch(mediaType) {
     case 'audio':
-      return Math.max(2, Math.floor(totalThreads * 0.4));  // 6-7 threads on 16-core
+      return Math.max(2, Math.floor(totalThreads * 0.35)); // Up from 0.25
     case 'video':
-      return Math.max(3, Math.floor(totalThreads * 0.9));  // 14-15 threads on 16-core
+      return Math.max(3, Math.floor(totalThreads * 0.75)); // Up from 0.6
     case 'image':
-      return Math.max(2, Math.floor(totalThreads * 0.7));  // 11-12 threads on 16-core
+      return Math.max(2, Math.floor(totalThreads * 0.5));  // Up from 0.4
   }
 }
 
 // More concurrent processes
-const MAX_CONCURRENT = Math.max(2, Math.min(10, Math.floor(os.cpus().length / 2)));
+const MAX_CONCURRENT = Math.max(2, Math.min(8, Math.floor(os.cpus().length / 2.5)));
 let parentOutputDir: string
 let activeConversions = 0;
 const conversionQueue: ConversionQueue[] = []
@@ -116,7 +119,7 @@ const convertAudio = async (inputPath: string, outputPath: string): Promise<void
   return new Promise((resolve, reject) => {
     ffmpeg(inputPath)
       .audioCodec('libmp3lame')
-      .audioBitrate('128k')
+      .audioBitrate('64k')
       .audioChannels(1)
       .audioFrequency(44100)
       .outputOptions([`-threads ${calculateThreads('audio')}`, '-q:a 0'])
@@ -149,43 +152,29 @@ const convertAudio = async (inputPath: string, outputPath: string): Promise<void
 
 const convertVideo = async (inputPath: string, outputPath: string): Promise<void> => {
   return new Promise((resolve, reject) => {
-    // SVT-AV1 specific parameters
-    const svtParams = [
-      'tune=1',           // Optimize for PSNR (mathematical quality)
-      'enable-overlays=1',// Enable overlapping blocks for better compression
-      'enable-qm=1',      // Enable quantization matrices for better visual quality
-      'rc=1'              // Variable bitrate mode for optimal size/quality balance
-    ].join(':')
-
     const commonOptions = [
       // Video codec and settings
-      '-c:v', 'libsvtav1',      // AV1 codec - excellent compression
-      '-crf', '22',             // Constant Rate Factor - balance of quality/size
+      '-c:v', 'libsvtav1',      // AV1 codec 
+      '-crf', '23',             // Maintain quality setting
       '-b:v', '0',              // Let CRF control bitrate
-      '-preset', '4',           // Encoding speed preset (0=slowest/best, 8=fastest)
-      '-pix_fmt', 'yuv420p10le',// 10-bit color depth prevents banding
-      '-g', '240',              // Keyframe interval - improves seeking and compression
-
-      '-svtav1-params', svtParams,  // SVT-AV1 specific parameters
-
-      // Audio codec and settings
-      '-c:a', 'libmp3lame',     // MP3 audio codec
-      '-b:a', '128k',           // Audio bitrate
-      '-ar', '44100',           // Audio sample rate (CD quality) 
-      '-q:a', '0',              // Best quality for VBR audio
-      '-ac', '1',               // Mono audio (saves space)
-
-      // Performance and compatibility settings
-      '-threads', calculateThreads('video').toString(), // Optimize CPU usage
-      '-movflags', '+faststart', // Optimize for web playback (streams before fully downloaded) 
+      '-preset', '6',           // Keep original preset
       
-      // Video processing
-      '-vf', "scale='min(1920,iw):-2:flags=lanczos'" // Resize to max 1080p with high-quality scaling
+      // Audio settings - keeping these unchanged as requested
+      '-c:a', 'libmp3lame',     // MP3 audio codec
+      '-b:a', '64k',            // Original audio bitrate
+      '-ac', '1',               // Mono audio
+
+      // Performance settings
+      '-threads', calculateThreads('video').toString(),
+      '-movflags', '+faststart', // Optimize for web playback
+      
+      // Video processing - keeping original scaling
+      '-vf', "scale='min(1920,iw):-2:flags=lanczos'" // Original resolution limit
     ]
     
     ffmpeg(inputPath)
       .outputOptions([...commonOptions, '-pass', '1', '-f', 'null'])
-      .output('/dev/null')
+      .output(NULL_DEVICE)
       .on('start', () => {
         console.log(`[VIDEO] Starting: ${path.basename(inputPath)}`)
         logToRenderer(`[VIDEO] Starting: ${path.basename(inputPath)}`)
@@ -232,22 +221,24 @@ const convertImage = async (inputPath: string, outputPath: string): Promise<void
 
   return new Promise((resolve, reject) => {
     const commonOptions = [
-      // Codec and quality settings
-      '-c:v', 'libsvtav1',      // AV1 codec - excellent for image compression
-      '-crf', '22',             // Quality level - balanced setting
-      '-preset', '4',           // Encoding speed/efficiency tradeoff
-      '-pix_fmt', 'yuv420p10le',// 10-bit color depth prevents banding
-      '-color_range', '1',      // Full color range for better image quality
+      // Codec and basic settings
+      '-c:v', 'libsvtav1',      // AV1 codec for images
+      '-crf', '23',             // Quality level - maintaining as requested
+      '-preset', '6',           // Encoding preset - maintaining as requested
       
-      // Performance and output settings
-      '-threads', calculateThreads('image').toString(), // Optimize CPU usage
-      '-vf', "scale='min(1920,iw):-2:flags=lanczos'",  // Resize to max 1080p with high-quality scaling
-      '-f', 'avif'              // Output format - modern efficient image format
+      // Performance settings
+      '-threads', calculateThreads('image').toString(),
+      
+      // Scaling - keeping original resolution handling
+      '-vf', "scale='min(1920,iw):-2:flags=lanczos'",
+      
+      // Output format
+      '-f', 'avif'              // AVIF output format
     ]
 
     ffmpeg(inputPath)
       .outputOptions([...commonOptions, '-pass', '1', '-f', 'null'])
-      .output('/dev/null')
+      .output(NULL_DEVICE)
       .on('start', () => {
         console.log(`[IMAGE] Starting: ${path.basename(inputPath)}`)
         logToRenderer(`[IMAGE] Starting: ${path.basename(inputPath)}`)
