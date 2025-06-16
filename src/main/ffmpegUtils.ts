@@ -7,6 +7,13 @@ import { DirItem, ConversionQueue } from '../types'
 import { sendToRenderer, logToRenderer } from './index'
 import { handleStopAllFFMPEGProcesses } from './ipc'
 
+// Configure FFmpeg and FFprobe paths
+const ffmpegPath = path.join(__dirname, '..', '..', 'ffmpeg', 'ffmpeg' + (process.platform === 'win32' ? '.exe' : ''))
+const ffprobePath = path.join(__dirname, '..', '..', 'ffmpeg', 'ffprobe' + (process.platform === 'win32' ? '.exe' : ''))
+
+ffmpeg.setFfmpegPath(ffmpegPath)
+ffmpeg.setFfprobePath(ffprobePath)
+
 // Add at the top with your other imports
 const NULL_DEVICE = os.platform() === 'win32' ? 'NUL' : '/dev/null'
 
@@ -167,32 +174,45 @@ const convertVideo = async (inputPath: string, outputPath: string): Promise<void
       // Performance settings
       '-threads', calculateThreads('video').toString(),
       '-movflags', '+faststart', // Optimize for web playback
+      '-strict', '-1', // Allow non-standard formats (for MP3 at non-standard sample rates)
       
       // Video processing - keeping original scaling
       '-vf', "scale='min(1920,iw):-2:flags=lanczos'" // Original resolution limit
     ]
     
+    console.log(`[VIDEO DEBUG] Starting first pass for: ${inputPath}`)
+    console.log(`[VIDEO DEBUG] First pass options:`, [...commonOptions, '-pass', '1', '-f', 'null'])
+    console.log(`[VIDEO DEBUG] NULL_DEVICE:`, NULL_DEVICE)
+    
     ffmpeg(inputPath)
       .outputOptions([...commonOptions, '-pass', '1', '-f', 'null'])
       .output(NULL_DEVICE)
-      .on('start', () => {
+      .on('start', (commandLine) => {
         console.log(`[VIDEO] Starting: ${path.basename(inputPath)}`)
+        console.log(`[VIDEO DEBUG] First pass command: ${commandLine}`)
         logToRenderer(`[VIDEO] Starting: ${path.basename(inputPath)}`)
       })
       .on('error', async (err) => {
+        console.log(`[VIDEO DEBUG] First pass error:`, err)
         await handleStopAllFFMPEGProcesses(parentOutputDir)
         sendToRenderer('CONVERSION_ERROR', inputPath, err.message)
         reject(err)
       })
-      // .on('stderr', (stderrLine) => {
-      //   console.log(`[VIDEO-STDERR] ${stderrLine}`)
-      // })
+      .on('stderr', (stderrLine) => {
+        console.log(`[VIDEO-STDERR-PASS1] ${stderrLine}`)
+      })
       .on('end', () => {
         console.log('[VIDEO] First pass completed')
 
+        console.log(`[VIDEO DEBUG] Starting second pass`)
+        console.log(`[VIDEO DEBUG] Second pass options:`, [...commonOptions, '-pass', '2'])
+        console.log(`[VIDEO DEBUG] Output path:`, outputPath.replace(/\.[^/.]+$/, '.mp4'))
+        
         ffmpeg(inputPath)
           .outputOptions([...commonOptions, '-pass', '2'])
-          .on('start', () => {})
+          .on('start', (commandLine) => {
+            console.log(`[VIDEO DEBUG] Second pass command: ${commandLine}`)
+          })
           .on('progress', (progress) => {
             if (typeof progress.percent === "number" && !isNaN(progress.percent)) {
               logToRenderer(`[VIDEO] ${path.basename(inputPath)}: ${progress.percent}%`)
@@ -201,7 +221,11 @@ const convertVideo = async (inputPath: string, outputPath: string): Promise<void
               console.log('progress percent is not a number')
             }
           })
+          .on('stderr', (stderrLine) => {
+            console.log(`[VIDEO-STDERR-PASS2] ${stderrLine}`)
+          })
           .on('error', async (err) => {
+            console.log(`[VIDEO DEBUG] Second pass error:`, err)
             await handleStopAllFFMPEGProcesses(parentOutputDir)
             sendToRenderer('CONVERSION_ERROR', inputPath, err.message)
             reject(err)

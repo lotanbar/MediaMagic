@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(where:*)",
+      "Bash(pnpm dev:*)",
+      "Bash(pnpm install:*)",
+      "Bash(pnpm approve-builds:*)",
+      "Bash(pnpm add:*)",
+      "Bash(git push:*)",
+      "Bash(git superlog:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(node:*)",
+      "Bash(pnpm:*)"
+    ],
+    "deny": []
+  }
+}

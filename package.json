@@ -14,7 +14,7 @@
     "start": "electron-vite preview",
     "dev": "electron-vite dev --watch",
     "build": "electron-vite build",
-    "postinstall": "electron-builder install-app-deps",
+    "postinstall": "electron-builder install-app-deps && node scripts/setup-ffmpeg.js",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "electron-vite build && electron-builder --mac",
@@ -25,8 +25,6 @@
     "@ant-design/icons": "^6.0.0",
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^3.0.0",
-    "@ffmpeg-installer/ffmpeg": "^1.1.0",
-    "@ffprobe-installer/ffprobe": "^2.1.2",
     "antd": "^5.21.2",
     "autoprefixer": "^10.4.20",
     "bytes": "^3.1.2",
@@ -63,9 +61,12 @@
     "vite": "^5.3.1"
   },
   "build": {
-    "asarUnpack": [
-      "node_modules/@ffmpeg-installer/ffmpeg/**/*",
-      "node_modules/@ffprobe-installer/ffprobe/**/*"
+    "extraResources": [
+      {
+        "from": "ffmpeg/",
+        "to": "ffmpeg/",
+        "filter": ["**/*"]
+      }
     ]
   }
 }

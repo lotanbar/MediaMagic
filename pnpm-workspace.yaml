@@ -1,0 +1,4 @@
+onlyBuiltDependencies:
+  - electron
+  - esbuild
+  - go-get-folder-size
