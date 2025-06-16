@@ -75,46 +75,69 @@ const createWindow = (): void => {
   }
 }
 
-// App initialization
-app
-  .whenReady()
-  .then(() => {
-    electronApp.setAppUserModelId('com.electron')
+// Ensure single instance
+const gotTheLock = app.requestSingleInstanceLock()
 
-    app.on('browser-window-created', (_, window) => {
-      optimizer.watchWindowShortcuts(window)
-    })
-
-    // Initialize IPC handlers once
-    if (!ipcInitialized) {
-      ipc()
-      ipcInitialized = true
+if (!gotTheLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    // Someone tried to run a second instance, focus our window instead
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.focus()
     }
+  })
 
-    createWindow()
-    console.log('Main process is ready!')
+  // App initialization
+  app
+    .whenReady()
+    .then(() => {
+      electronApp.setAppUserModelId('com.electron')
 
-    // Clean up FFmpeg processes before quit
-    app.on('before-quit', async () => {
-      try {
-        await handleStopAllFFMPEGProcesses(undefined)
-      } catch (error) {
-        if (error instanceof Error && !error.message.includes('not found')) {
-          console.error('Error stopping FFmpeg processes:', error)
-        }
+      app.on('browser-window-created', (_, window) => {
+        optimizer.watchWindowShortcuts(window)
+      })
+
+      // Initialize IPC handlers once
+      if (!ipcInitialized) {
+        ipc()
+        ipcInitialized = true
+        console.log('IPC handlers initialized successfully')
+      } else {
+        console.log('IPC handlers already initialized, skipping...')
       }
-    })
 
-    // Handle macOS activation
-    app.on('activate', () => {
+      // Create window only if none exist
       if (BrowserWindow.getAllWindows().length === 0) {
         createWindow()
+        console.log('Main process is ready!')
+      } else {
+        console.log('Windows already exist, skipping window creation...')
       }
+
+      // Clean up FFmpeg processes before quit
+      app.on('before-quit', async () => {
+        try {
+          await handleStopAllFFMPEGProcesses(undefined)
+        } catch (error) {
+          if (error instanceof Error && !error.message.includes('not found')) {
+            console.error('Error stopping FFmpeg processes:', error)
+          }
+        }
+      })
+
+      // Handle macOS activation
+      app.on('activate', () => {
+        if (BrowserWindow.getAllWindows().length === 0) {
+          createWindow()
+        }
+      })
     })
-  })
-  .catch((error) => {
-    console.error('Error during app initialization:', error)
-  })
+    .catch((error) => {
+      console.error('Error during app initialization:', error)
+    })
+}
 
 // Handle window closure
 app.on('window-all-closed', () => {
