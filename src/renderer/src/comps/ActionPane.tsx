@@ -15,7 +15,7 @@ export default function ActionPane(): JSX.Element {
 
   // Called if the output path is changed
   const handleSelectOutputDir = async (): Promise<void> => {
-    const res = await window.electron.ipcRenderer.invoke('SELECT_OUTPUT_DIR')
+    const res = await window.Electron.ipcRenderer.invoke('SELECT_OUTPUT_DIR')
     setOutputDir(res)
   }
 
@@ -28,7 +28,7 @@ export default function ActionPane(): JSX.Element {
       const clonedExplorer = cloneDeep(explorer) // Properly cloning the explorer
       const props = { explorer: clonedExplorer, outputDir } // Create props object with cloned explorer
       console.log('about to convert ', props)
-      await window.electron.ipcRenderer.invoke('CONVERT_EXPLORER', props)
+      await window.Electron.ipcRenderer.invoke('CONVERT_EXPLORER', props)
     } else {
       showSelectedFilesNotification() // Notify the user if an empty folder was selected
     }
@@ -41,16 +41,16 @@ export default function ActionPane(): JSX.Element {
       setConvertClicked(false) // Reset loading bar
       showConversionSuccessNotification() // Show notification
     }
-    window.electron.ipcRenderer.on('CONVERSION_COMPLETE', handleConversionComplete)
+    window.Electron.ipcRenderer.on('CONVERSION_COMPLETE', handleConversionComplete)
 
     return (): void => {
-      window.electron.ipcRenderer.removeListener('CONVERSION_COMPLETE', handleConversionComplete)
+      window.Electron.ipcRenderer.removeListener('CONVERSION_COMPLETE', handleConversionComplete)
     }
   }, [])
 
   // Called if the STOP button is clicked
   const stopAllFFmpegProcesses = async (): Promise<void> => {
-    await window.electron.ipcRenderer.invoke('STOP_ALL_FFMPEG_PROCESSES')
+    await window.Electron.ipcRenderer.invoke('STOP_ALL_FFMPEG_PROCESSES')
     setConvertClicked(false)
     showConversionStoppedNotification()
   }
