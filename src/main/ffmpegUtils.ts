@@ -39,14 +39,29 @@ const conversionQueue: ConversionQueue[] = []
 
 export const convertExplorer = async (explorer: DirItem[], outputDir: string): Promise<void> => {
   parentOutputDir = outputDir;
-  await fs.mkdir(outputDir, { recursive: true });
+  
+  try {
+    await fs.mkdir(outputDir, { recursive: true });
+  } catch (error: any) {
+    if (error.code === 'EPERM') {
+      throw new Error(`Permission denied: Cannot create directory at "${outputDir}". Please select a different location or run as administrator.`);
+    }
+    throw error;
+  }
   
   // First pass: build queue without starting conversions
   const buildQueue = async (items: DirItem[], currentDir: string): Promise<void> => {
     for (const dir of items) {
       if (dir.type === 'folder') {
         const childDir = path.join(currentDir, dir.name);
-        await fs.mkdir(childDir, { recursive: true });
+        try {
+          await fs.mkdir(childDir, { recursive: true });
+        } catch (error: any) {
+          if (error.code === 'EPERM') {
+            throw new Error(`Permission denied: Cannot create directory at "${childDir}". Please select a different location or run as administrator.`);
+          }
+          throw error;
+        }
         if (dir.children) {
           await buildQueue(dir.children, childDir);
         }

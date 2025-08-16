@@ -133,7 +133,7 @@ export default function FileView(): JSX.Element {
             </tr>
           </thead>
           <tbody>
-            <RenderDirItem {...explorer} />
+            <RenderDirItem items={explorer} />
           </tbody>
         </table>
       )}

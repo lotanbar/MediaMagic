@@ -9,7 +9,7 @@ import {
 } from '../Notifications'
 
 export default function ActionPane(): JSX.Element {
-  const [outputDir, setOutputDir] = useState<string>('C:\\Users\\user\\Desktop')
+  const [outputDir, setOutputDir] = useState<string>('')
 
   const { explorer, setExplorer, convertClicked, setConvertClicked } = useExplorer()
 
@@ -30,7 +30,11 @@ export default function ActionPane(): JSX.Element {
       console.log('about to convert ', props)
       await window.Electron.ipcRenderer.invoke('CONVERT_EXPLORER', props)
     } else {
-      showSelectedFilesNotification() // Notify the user if an empty folder was selected
+      if (explorer.length === 0) {
+        showSelectedFilesNotification() // Notify the user if an empty folder was selected
+      } else if (outputDir.length === 0) {
+        alert('Please select an output directory first')
+      }
     }
   }
 

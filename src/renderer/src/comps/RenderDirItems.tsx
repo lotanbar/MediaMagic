@@ -5,7 +5,7 @@ import ProgressIndicator from './ProgressIndicator'
 import { useExplorer } from '../ExplorerContext'
 import { DirItem } from '../../../types'
 
-export default function RenderDirItems(explorer: DirItem[]): JSX.Element {
+export default function RenderDirItems({ items }: { items: DirItem[] }): JSX.Element {
   const { expandFolder, deleteItem, convertClicked } = useExplorer()
 
   const renderDirItems = (items: DirItem[], depth: number = 0): JSX.Element[] => {
@@ -59,5 +59,5 @@ export default function RenderDirItems(explorer: DirItem[]): JSX.Element {
     ))
   }
 
-  return <>{renderDirItems(explorer)}</>
+  return <>{renderDirItems(items)}</>
 }

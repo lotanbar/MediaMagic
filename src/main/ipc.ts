@@ -122,6 +122,14 @@ const handleConvertExplorer = async (
   _e: IpcMainInvokeEvent,
   { explorer, outputDir }: { explorer: DirItem[]; outputDir: string }
 ): Promise<void> => {
+  if (!outputDir || outputDir.trim() === '') {
+    throw new Error('Output directory is required')
+  }
+
+  if (!path.isAbsolute(outputDir)) {
+    throw new Error('Output directory must be an absolute path')
+  }
+
   const newOutputDir = path.join(outputDir, 'converted')
   console.log('Output is located in:', newOutputDir)
   await convertExplorer(explorer, newOutputDir)
